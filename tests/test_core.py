@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from transist.core import Store, TTL, RETENTION, QUIET, LIFETIME_HOURS
+from transit.core import Store, TTL, RETENTION, QUIET, LIFETIME_HOURS
 
 
 class EngineTests(unittest.TestCase):
@@ -44,7 +44,7 @@ class EngineTests(unittest.TestCase):
         row = self.tick()[0]
         self.assertEqual(row['status'], 'deleted')
         self.assertFalse(path.exists())
-        self.assertEqual((self.store.root / '.transist-recovery' / row['id']).read_bytes(), b'valuable data')
+        self.assertEqual((self.store.root / '.transit-recovery' / row['id']).read_bytes(), b'valuable data')
 
     def test_every_cleanup_window_expires_at_its_deadline(self):
         for hours in LIFETIME_HOURS:
@@ -170,7 +170,7 @@ class EngineTests(unittest.TestCase):
         deleted = self.expire()
         with self.store.session() as s:
             s.configure('paused', True)
-        shutil.rmtree(self.store.root / '.transist-recovery')
+        shutil.rmtree(self.store.root / '.transit-recovery')
         with self.store.session() as s:
             self.assertTrue(s.storage_recreated)
             self.assertEqual(s.snapshot()['files'][0]['status'], 'recovery_missing')
@@ -183,7 +183,7 @@ class EngineTests(unittest.TestCase):
         self.tick()
         with self.store.session() as s:
             path.unlink()
-            (self.store.root / '.transist-recovery' / deleted['id']).unlink()
+            (self.store.root / '.transit-recovery' / deleted['id']).unlink()
             snapshot = s.snapshot()
             self.assertEqual(snapshot['missing_recovery_count'], 1)
             self.assertNotIn('active', [r['status'] for r in snapshot['files']])
@@ -192,7 +192,7 @@ class EngineTests(unittest.TestCase):
         deleted = self.expire()
         trashed = self.home / 'trashed-folder'
         self.store.root.rename(trashed)
-        vault_file = trashed / '.transist-recovery' / deleted['id']
+        vault_file = trashed / '.transit-recovery' / deleted['id']
         with self.store.session() as s:
             self.assertEqual(s.snapshot()['files'], [])
             self.assertEqual(vault_file.read_bytes(), b'valuable data')
@@ -206,7 +206,7 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(s.snapshot()['missing_recovery_count'], 0)
 
     def test_extension_uninstall_resets_once_and_keeps_active_files(self):
-        extension = self.home / '.local/share/gnome-shell/extensions/transist@aaryabalan.local'
+        extension = self.home / '.local/share/gnome-shell/extensions/transit@aaryabalan.local'
         extension.mkdir(parents=True)
         deleted = self.expire()
         active = self.write('keep.txt')
@@ -218,7 +218,7 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(s.snapshot()['files'], [])
             self.assertEqual(s.settings()['lifetime_hours'], 12)
         self.assertTrue(active.exists())
-        self.assertFalse((self.store.root / '.transist-recovery' / deleted['id']).exists())
+        self.assertFalse((self.store.root / '.transit-recovery' / deleted['id']).exists())
         extension.mkdir()
         rows = self.tick()
         self.assertEqual([r['name'] for r in rows], ['keep.txt'])
@@ -226,7 +226,7 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(s.snapshot()['files'][0]['id'], rows[0]['id'])
 
     def test_disabling_or_upgrading_extension_does_not_reset_history(self):
-        extension = self.home / '.local/share/gnome-shell/extensions/transist@aaryabalan.local'
+        extension = self.home / '.local/share/gnome-shell/extensions/transit@aaryabalan.local'
         extension.mkdir(parents=True)
         metadata = extension / 'metadata.json'
         metadata.write_text('old version')
@@ -248,7 +248,7 @@ class EngineTests(unittest.TestCase):
 
     def test_replaced_or_symlinked_recovery_copy_cannot_be_restored(self):
         deleted = self.expire()
-        original = self.store.root / '.transist-recovery' / deleted['id']
+        original = self.store.root / '.transit-recovery' / deleted['id']
         original.rename(self.home / 'original-recovery')
         original.write_bytes(b'different file')
         with self.store.session() as s:
@@ -267,7 +267,7 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(self.tick()[0]['status'], 'deleted')
         self.now += 1
         self.assertEqual(self.tick()[0]['status'], 'purged')
-        self.assertFalse((self.store.root / '.transist-recovery' / row['id']).exists())
+        self.assertFalse((self.store.root / '.transit-recovery' / row['id']).exists())
         with self.store.session() as s:
             with self.assertRaises(ValueError):
                 s.action(row['id'], 'restore')
@@ -333,7 +333,7 @@ class EngineTests(unittest.TestCase):
                 pass
 
     def test_recovery_symlink_rejected(self):
-        vault = self.store.root / '.transist-recovery'
+        vault = self.store.root / '.transit-recovery'
         vault.rmdir()
         vault.symlink_to(self.home)
         with self.assertRaises(OSError):
@@ -375,7 +375,7 @@ class EngineTests(unittest.TestCase):
             s.configure('paused', True)
         self.now += RETENTION
         self.assertEqual(self.tick()[0]['status'], 'deleted')
-        self.assertTrue((self.store.root / '.transist-recovery' / row['id']).exists())
+        self.assertTrue((self.store.root / '.transit-recovery' / row['id']).exists())
 
     def test_replacement_gets_new_timer_and_not_old_pin(self):
         path = self.write()
@@ -426,7 +426,7 @@ class EngineTests(unittest.TestCase):
 
     def test_bad_screenshot_folder_refused(self):
         with self.store.session() as s:
-            for path in (self.home, self.store.root, self.store.root / '.transist-recovery'):
+            for path in (self.home, self.store.root, self.store.root / '.transit-recovery'):
                 with self.assertRaises(ValueError):
                     s.configure('screenshot_folder', str(path))
 
@@ -466,7 +466,7 @@ class EngineTests(unittest.TestCase):
         self.now += TTL
         with self.assertRaises(OSError):
             with self.store.session() as s:
-                with patch('transist.core.os.unlink', side_effect=OSError('simulated interruption')):
+                with patch('transit.core.os.unlink', side_effect=OSError('simulated interruption')):
                     s.tick()
         with self.store.session() as s:
             self.assertEqual(s.snapshot()['files'][0]['status'], 'deleted')
@@ -476,7 +476,7 @@ class EngineTests(unittest.TestCase):
         row = self.expire()
         with self.assertRaises(OSError):
             with self.store.session() as s:
-                with patch('transist.core.os.unlink', side_effect=OSError('simulated interruption')):
+                with patch('transit.core.os.unlink', side_effect=OSError('simulated interruption')):
                     s.action(row['id'], 'restore')
         with self.store.session() as s:
             self.assertEqual(s.snapshot()['files'][0]['status'], 'active')
@@ -488,7 +488,7 @@ class EngineTests(unittest.TestCase):
         self.now += TTL
         with self.assertRaises(OSError):
             with self.store.session() as s:
-                with patch('transist.core.os.link', side_effect=OSError('disk failure')):
+                with patch('transit.core.os.link', side_effect=OSError('disk failure')):
                     s.tick()
         with self.store.session() as s:
             self.assertEqual(s.snapshot()['files'][0]['status'], 'active')

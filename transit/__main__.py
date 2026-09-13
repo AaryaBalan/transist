@@ -9,7 +9,7 @@ from .core import Store
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Transist: files for now, recovery for a week')
+    parser = argparse.ArgumentParser(description='Transit: files for now, recovery for a week')
     commands = parser.add_subparsers(dest='command', required=True)
     gui = commands.add_parser('gui')
     gui.add_argument('--page', choices=['active', 'history', 'settings'], default='active')
@@ -24,7 +24,7 @@ def main():
     args = parser.parse_args()
     if args.command == 'gui':
         # Compatibility alias: opens native extension preferences, never a desktop app.
-        subprocess.run(['gnome-extensions', 'prefs', 'transist@aaryabalan.local'], check=True)
+        subprocess.run(['gnome-extensions', 'prefs', 'transit@aaryabalan.local'], check=True)
         return
     store = Store()
     if args.command == 'daemon':
@@ -41,14 +41,14 @@ def main():
                     missing = s.missing_recovery_count()
                     storage_lost = s.storage_recreated or missing > previous_missing
                 if storage_lost:
-                    message = ('The _transist folder or recovery files were removed outside Transist. '
+                    message = ('The _transit folder or recovery files were removed outside Transit. '
                                'Check system Trash. Before removing the folder intentionally, disable '
-                               'the extension and stop transist.service; disabling the extension alone does not stop cleanup.')
+                               'the extension and stop transit.service; disabling the extension alone does not stop cleanup.')
                     logging.warning(message)
                     if shutil.which('notify-send'):
                         try:
-                            subprocess.run(['notify-send', '--app-name=Transist', '--urgency=critical',
-                                            'Transist storage was removed', message],
+                            subprocess.run(['notify-send', '--app-name=Transit', '--urgency=critical',
+                                            'Transit storage was removed', message],
                                            timeout=3, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         except (OSError, subprocess.TimeoutExpired):
                             pass
@@ -80,13 +80,13 @@ def main():
                 return
             snapshot = s.snapshot()
         try:
-            check = subprocess.run(['systemctl', '--user', 'is-active', 'transist.service'], capture_output=True, text=True, timeout=3)
+            check = subprocess.run(['systemctl', '--user', 'is-active', 'transit.service'], capture_output=True, text=True, timeout=3)
             snapshot['service'] = check.stdout.strip() or 'unavailable'
         except (OSError, subprocess.TimeoutExpired):
             snapshot['service'] = 'unavailable'
         print(json.dumps(snapshot))
     except (OSError, ValueError) as error:
-        parser.exit(1, f'Transist: {error}\n')
+        parser.exit(1, f'Transit: {error}\n')
 
 
 if __name__ == '__main__':

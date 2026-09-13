@@ -1,4 +1,4 @@
-"""GNOME Files companion: reject deletion of ~/_transist, not its contents.
+"""GNOME Files companion: reject deletion of ~/_transit, not its contents.
 
 Nautilus has no public deletion-veto provider. This companion wraps the native
 GFile interface used inside Nautilus. Offsets come from the installed typelib,
@@ -18,8 +18,8 @@ gi.require_version('Adw', '1')
 gi.require_version('Nautilus', '4.1')
 from gi.repository import Adw, Gio, GLib, GObject, Gtk, Nautilus
 
-UUID = 'transist@aaryabalan.local'
-MESSAGE = 'Deleting _transist is restricted. Disable the Transist extension first.'
+UUID = 'transit@aaryabalan.local'
+MESSAGE = 'Deleting _transit is restricted. Disable the Transit extension first.'
 _guard = None  # Retain native callbacks for the lifetime of the Nautilus process.
 
 
@@ -36,7 +36,7 @@ class FolderGuard:
     """Wrap GFile delete/trash without changing ownership or permissions."""
     def __init__(self, root, enabled=True, marker=None, launcher=None, library=None):
         self.root = Gio.File.new_for_path(os.fspath(root))
-        self._native = ctypes.CDLL(os.fspath(library or Path(__file__).with_name('transist_guard_native.so')))
+        self._native = ctypes.CDLL(os.fspath(library or Path(__file__).with_name('transit_guard_native.so')))
         gio = ctypes.CDLL('libgio-2.0.so.0')
         self._gobject = ctypes.CDLL('libgobject-2.0.so.0')
         glib = ctypes.CDLL('libglib-2.0.so.0')
@@ -65,28 +65,28 @@ class FolderGuard:
             if not slot.value:
                 raise RuntimeError(f'Missing GFile implementation: {name}')
             slots.append(ctypes.addressof(slot))
-        self._native.transist_install.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_uint, ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p]
-        self._native.transist_install.restype = ctypes.c_int
-        self._native.transist_set_enabled.argtypes = [ctypes.c_int]
-        self._native.transist_set_enabled.restype = None
-        self._native.transist_uninstall.restype = None
-        self._native.transist_removal_attempts.restype = ctypes.c_uint
+        self._native.transit_install.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_uint, ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p]
+        self._native.transit_install.restype = ctypes.c_int
+        self._native.transit_set_enabled.argtypes = [ctypes.c_int]
+        self._native.transit_set_enabled.restype = None
+        self._native.transit_uninstall.restype = None
+        self._native.transit_removal_attempts.restype = ctypes.c_uint
         self.set_enabled(enabled)
-        if not self._native.transist_install(capsule_pointer(self.root.__gpointer__, None), *slots,
+        if not self._native.transit_install(capsule_pointer(self.root.__gpointer__, None), *slots,
                 gio.g_file_equal, glib.g_set_error_literal, gio.g_io_error_quark(),
                 int(Gio.IOErrorEnum.PERMISSION_DENIED), os.fsencode(marker) if marker else None,
                 os.fsencode(launcher) if launcher else None):
-            raise RuntimeError('Could not install the Transist file-operation guard')
+            raise RuntimeError('Could not install the Transit file-operation guard')
 
     def set_enabled(self, enabled):
-        self._native.transist_set_enabled(-1 if enabled is None else int(enabled))
+        self._native.transit_set_enabled(-1 if enabled is None else int(enabled))
 
     @property
     def removal_attempts(self):
-        return self._native.transist_removal_attempts()
+        return self._native.transit_removal_attempts()
 
     def close(self):
-        self._native.transist_uninstall()
+        self._native.transit_uninstall()
         self._gobject.g_type_class_unref(self._class)
 
 
@@ -97,8 +97,8 @@ def restyle_restriction_dialog(dialog):
     details = dialog.get_extra_child()
     if not isinstance(details, Gtk.Label) or details.get_text() != MESSAGE:
         return
-    dialog.set_heading('Deleting _transist is restricted')
-    dialog.set_body('Disable the Transist extension first. You can still delete individual files inside _transist.')
+    dialog.set_heading('Deleting _transit is restricted')
+    dialog.set_body('Disable the Transit extension first. You can still delete individual files inside _transit.')
     dialog.set_extra_child(None)
     for response in ('delete', 'delete_all', 'skip', 'skip_all', 'skip_files', 'retry'):
         if dialog.has_response(response):
@@ -108,13 +108,13 @@ def restyle_restriction_dialog(dialog):
     dialog.set_close_response('cancel')
 
 
-class TransistFolderProtection(GObject.GObject, Nautilus.MenuProvider):
+class TransitFolderProtection(GObject.GObject, Nautilus.MenuProvider):
     def __init__(self):
         super().__init__()
         global _guard
         if _guard is None:
-            _guard = FolderGuard(Path.home() / '_transist', enabled=None,
-                                 marker=self._marker(), launcher=Path.home() / '.local/bin/transist')
+            _guard = FolderGuard(Path.home() / '_transit', enabled=None,
+                                 marker=self._marker(), launcher=Path.home() / '.local/bin/transit')
         self._watched = set()
         self._windows = Gtk.Window.get_toplevels()
         self._windows.connect('items-changed', self._watch_windows)
@@ -131,14 +131,14 @@ class TransistFolderProtection(GObject.GObject, Nautilus.MenuProvider):
 
     @staticmethod
     def _marker():
-        return Path(GLib.get_user_data_dir()) / 'transist' / 'folder-removal-requested'
+        return Path(GLib.get_user_data_dir()) / 'transit' / 'folder-removal-requested'
 
     def _refresh_state(self):
         try:
             _guard.set_enabled(extension_active())
         except GLib.Error:
             _guard.set_enabled(None)
-            logging.exception('Transist could not query extension state')
+            logging.exception('Transit could not query extension state')
         return GLib.SOURCE_REMOVE
 
     def _owner_changed(self, _bus, _sender, _path, _interface, _signal, parameters):
@@ -155,7 +155,7 @@ class TransistFolderProtection(GObject.GObject, Nautilus.MenuProvider):
         _guard.set_enabled(active)
         if active and self._marker().exists():
             self._marker().unlink()
-            subprocess.Popen(['systemctl', '--user', 'start', 'transist.service'])
+            subprocess.Popen(['systemctl', '--user', 'start', 'transit.service'])
 
     def _watch_windows(self, *_args):
         for i in range(self._windows.get_n_items()):
@@ -179,7 +179,7 @@ class TransistFolderProtection(GObject.GObject, Nautilus.MenuProvider):
         else:
             child = widget.get_first_child()
             while child:
-                TransistFolderProtection._scan_dialogs(child)
+                TransitFolderProtection._scan_dialogs(child)
                 child = child.get_next_sibling()
         return GLib.SOURCE_REMOVE
 

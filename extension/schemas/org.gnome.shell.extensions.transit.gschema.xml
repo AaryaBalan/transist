@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
-  <schema id="org.gnome.shell.extensions.transist" path="/org/gnome/shell/extensions/transist/">
+  <schema id="org.gnome.shell.extensions.transit" path="/org/gnome/shell/extensions/transit/">
     <key name="direct-screenshots" type="b">
       <default>false</default>
-      <summary>Save GNOME screenshots directly in _transist</summary>
+      <summary>Save GNOME screenshots directly in _transit</summary>
     </key>
     <key name="direct-screenshots-ready" type="b">
       <default>false</default>

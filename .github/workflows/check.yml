@@ -12,7 +12,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m unittest discover -s tests -v
-      - run: python -m compileall -q transist install.py
+      - run: python -m compileall -q transit install.py
       - run: node --input-type=module --check < extension/extension.js
       - run: node --input-type=module --check < extension/prefs.js
       - run: node --test tests/preferences.test.mjs

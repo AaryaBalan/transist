@@ -1,4 +1,4 @@
-"""Transist: user-owned, recoverable, time-limited files. Python 3.10+."""
+"""Transit: user-owned, recoverable, time-limited files. Python 3.10+."""
 import contextlib
 import fcntl
 import json
@@ -33,8 +33,8 @@ def private_directory(path):
 class Store:
     def __init__(self, home=None, data=None, clock=time.time):
         self.home = Path(home or Path.home()).absolute()
-        self.root = self.home / '_transist'
-        self.data = Path(data or Path(os.environ.get('XDG_DATA_HOME', self.home / '.local/share')) / 'transist')
+        self.root = self.home / '_transit'
+        self.data = Path(data or Path(os.environ.get('XDG_DATA_HOME', self.home / '.local/share')) / 'transit')
         self.clock = clock
 
     @contextlib.contextmanager
@@ -78,12 +78,12 @@ class Store:
                 rootfd = private_directory(self.root)
                 if not uninstall:
                     try:
-                        os.mkdir('.transist-recovery', 0o700, dir_fd=rootfd)
+                        os.mkdir('.transit-recovery', 0o700, dir_fd=rootfd)
                         vault_created = True
                     except FileExistsError:
                         pass
                 try:
-                    vaultfd = os.open('.transist-recovery', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=rootfd)
+                    vaultfd = os.open('.transit-recovery', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=rootfd)
                 except FileNotFoundError:
                     if not uninstall:
                         raise
@@ -93,7 +93,7 @@ class Store:
                         raise ValueError('Recovery directory must be private (mode 0700).')
             self.rootfd, self.vaultfd = rootfd, vaultfd
             root_identity = self.directory_identity(self.root)
-            extension = self.home / '.local/share/gnome-shell/extensions/transist@aaryabalan.local'
+            extension = self.home / '.local/share/gnome-shell/extensions/transit@aaryabalan.local'
             extension_identity = self.directory_identity(extension)
             root_changed = 'root' in previous and previous['root'] != root_identity
             extension_removed = previous.get('extension') is not None and extension_identity is None
@@ -167,7 +167,7 @@ class Store:
         if key == 'screenshot_folder':
             p = Path(value).expanduser().resolve()
             if not p.is_dir() or p == self.home or p == self.root or self.root in p.parents:
-                raise ValueError('Choose an existing dedicated screenshot folder outside _transist.')
+                raise ValueError('Choose an existing dedicated screenshot folder outside _transit.')
             value = str(p)
         old = self.settings()
         if old[key] == value:
@@ -244,11 +244,11 @@ class Store:
         now = self.clock()
         if restoring:
             if r['status'] == 'recovery_missing':
-                raise ValueError('Recovery copy is unavailable. If you deleted or moved _transist, check system Trash. History alone cannot restore a file.')
+                raise ValueError('Recovery copy is unavailable. If you deleted or moved _transit, check system Trash. History alone cannot restore a file.')
             if r['status'] != 'deleted' or now >= r['purge_at']:
                 raise ValueError('The recovery window has ended or this file is no longer recoverable.')
             if not self.matches(self.vaultfd, r['id'], r):
-                raise ValueError('Recovery file is missing or was changed outside Transist.')
+                raise ValueError('Recovery file is missing or was changed outside Transit.')
             name = r['name']
             # Never replace an existing file, directory, or symlink.
             while True:
@@ -298,7 +298,7 @@ class Store:
         cfg = self.settings()
         path = Path(cfg['screenshot_folder'])
         if path.resolve() == self.root.resolve() or self.root.resolve() in path.resolve().parents:
-            raise ValueError('Screenshot source cannot be inside _transist.')
+            raise ValueError('Screenshot source cannot be inside _transit.')
         try:
             fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         except FileNotFoundError:
@@ -399,7 +399,7 @@ class Store:
         self.refresh_availability()
         return {'folder': str(self.root), 'settings': self.settings(),
                 'folder_removed': self.rootfd is None,
-                'folder_guard_installed': all((self.data.parent / 'nautilus-python/extensions' / name).is_file() for name in ('transist_guard.py', 'transist_guard_native.so')),
+                'folder_guard_installed': all((self.data.parent / 'nautilus-python/extensions' / name).is_file() for name in ('transit_guard.py', 'transit_guard_native.so')),
                 'missing_recovery_count': self.missing_recovery_count(),
                 'files': [dict(r) for r in self.db.execute('SELECT * FROM files ORDER BY added DESC')],
                 'now': self.clock()}

@@ -9,22 +9,22 @@ import subprocess
 import threading
 import time
 
-base = Path(tempfile.mkdtemp(prefix='transist-nautilus-'))
+base = Path(tempfile.mkdtemp(prefix='transit-nautilus-'))
 os.environ.update(HOME=str(base), XDG_DATA_HOME=str(base/'data'), XDG_CONFIG_HOME=str(base/'config'), XDG_CACHE_HOME=str(base/'cache'), GSETTINGS_BACKEND='memory', NO_AT_BRIDGE='1', NAUTILUS_PYTHON_DEBUG='all')
-root = base/'_transist'
+root = base/'_transit'
 root.mkdir()
 (root/'sample.txt').write_text('sample must survive blocked root deletion')
-plugin = base/'data/nautilus-python/extensions/transist_guard.py'
+plugin = base/'data/nautilus-python/extensions/transit_guard.py'
 plugin.parent.mkdir(parents=True)
 repo = Path(__file__).resolve().parents[1]
-source = (repo/'nautilus/transist_guard.py').read_text()
+source = (repo/'nautilus/transit_guard.py').read_text()
 source = source.replace("dialog.set_close_response('cancel')", "dialog.set_close_response('cancel')\n    GLib.timeout_add(350, _capture_and_close, dialog)")
 source = source.replace('restyle_restriction_dialog(dialogs.get_item(i))', """dialog = dialogs.get_item(i)
             restyle_restriction_dialog(dialog)
-            if isinstance(dialog, Adw.AlertDialog) and dialog.has_response('delete') and '_transist' in dialog.get_heading():
+            if isinstance(dialog, Adw.AlertDialog) and dialog.has_response('delete') and '_transit' in dialog.get_heading():
                 dialog.set_close_response('delete')
                 GLib.timeout_add(250, lambda d=dialog: (d.close(), GLib.SOURCE_REMOVE)[1])""")
-source = source.replace("restyle_restriction_dialog(widget)", "restyle_restriction_dialog(widget)\n            if widget.has_response('delete') and '_transist' in widget.get_heading():\n                widget.set_close_response('delete')\n                GLib.timeout_add(250, lambda d=widget: (d.close(), GLib.SOURCE_REMOVE)[1])")
+source = source.replace("restyle_restriction_dialog(widget)", "restyle_restriction_dialog(widget)\n            if widget.has_response('delete') and '_transit' in widget.get_heading():\n                widget.set_close_response('delete')\n                GLib.timeout_add(250, lambda d=widget: (d.close(), GLib.SOURCE_REMOVE)[1])")
 source += '''
 def _capture_and_close(dialog):
     from gi.repository import Gsk
@@ -41,7 +41,7 @@ def _capture_and_close(dialog):
     return GLib.SOURCE_REMOVE
 '''
 plugin.write_text(source)
-subprocess.run(['cc', '-shared', '-fPIC', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', str(repo/'nautilus/guard_native.c'), '-o', str(plugin.with_name('transist_guard_native.so'))], check=True)
+subprocess.run(['cc', '-shared', '-fPIC', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', str(repo/'nautilus/guard_native.c'), '-o', str(plugin.with_name('transit_guard_native.so'))], check=True)
 import gi
 from gi.repository import Gio, GLib
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -88,7 +88,7 @@ def run():
         assert root.is_dir()
         print('Child file and unrelated folder: normal Trash allowed', flush=True)
         state['enabled'] = False
-        bus.emit_signal(None, '/org/gnome/Shell/Extensions', 'org.gnome.Shell.Extensions', 'ExtensionStateChanged', GLib.Variant('(sa{sv})', ('transist@aaryabalan.local', {'state': GLib.Variant('i', 2)})))
+        bus.emit_signal(None, '/org/gnome/Shell/Extensions', 'org.gnome.Shell.Extensions', 'ExtensionStateChanged', GLib.Variant('(sa{sv})', ('transit@aaryabalan.local', {'state': GLib.Variant('i', 2)})))
         time.sleep(0.2)
         request('TrashURIs', [root])
         wait_for(lambda: not root.exists())

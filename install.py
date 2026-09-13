@@ -8,9 +8,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import migration
 
 SOURCE = Path(__file__).resolve().parent
-UUID = 'transist@aaryabalan.local'
+UUID = 'transit@aaryabalan.local'
 
 
 def file_manager_runtime_available():
@@ -27,7 +28,7 @@ def main():
     parser.add_argument('--no-service', action='store_true', help='Install without starting cleanup')
     parser.add_argument('--no-extension', action='store_true', help='Install only the headless service and CLI')
     parser.add_argument('--no-file-manager-guard', action='store_true', help='Skip the GNOME Files folder-deletion companion')
-    parser.add_argument('--uninstall', action='store_true', help='Remove program; preserve all files, recovery data, and settings')
+    parser.add_argument('--uninstall', action='store_true', help='Remove program and reset file history; preserve active files and settings')
     args = parser.parse_args()
     if os.geteuid() == 0:
         parser.error('Run as your ordinary desktop user, without sudo.')
@@ -36,19 +37,22 @@ def main():
     home = Path.home()
     data = Path(os.environ.get('XDG_DATA_HOME', home / '.local/share'))
     config = Path(os.environ.get('XDG_CONFIG_HOME', home / '.config'))
-    app = data / 'transist-app'
-    launcher = home / '.local/bin/transist'
-    unit = config / 'systemd/user/transist.service'
-    desktop = data / 'applications/io.github.transist.App.desktop'
-    icon = data / 'icons/hicolor/scalable/apps/io.github.transist.App.svg'
+    app = data / 'transit-app'
+    launcher = home / '.local/bin/transit'
+    unit = config / 'systemd/user/transit.service'
+    desktop = data / 'applications/io.github.transit.App.desktop'
+    icon = data / 'icons/hicolor/scalable/apps/io.github.transit.App.svg'
     extension = home / '.local/share/gnome-shell/extensions' / UUID
-    file_manager_guard = data / 'nautilus-python/extensions/transist_guard.py'
-    native_guard = file_manager_guard.with_name('transist_guard_native.so')
+    file_manager_guard = data / 'nautilus-python/extensions/transit_guard.py'
+    native_guard = file_manager_guard.with_name('transit_guard_native.so')
     if args.uninstall:
         if shutil.which('systemctl'):
-            subprocess.run(['systemctl', '--user', 'disable', '--now', 'transist.service'], check=False)
+            subprocess.run(['systemctl', '--user', 'disable', '--now', 'transit.service'], check=False)
         if shutil.which('gnome-extensions'):
             subprocess.run(['gnome-extensions', 'disable', UUID], check=False)
+        from transit.core import Store
+        with Store().session(uninstall=True):
+            pass
         for path in (launcher, unit, desktop, icon, file_manager_guard, native_guard):
             path.unlink(missing_ok=True)
         for path in (app, extension):
@@ -56,10 +60,10 @@ def main():
                 shutil.rmtree(path)
         if shutil.which('systemctl'):
             subprocess.run(['systemctl', '--user', 'daemon-reload'], check=False)
-        print('Uninstalled. _transist, recovery copies, and the history database are preserved. Cleanup has stopped.')
+        print('Uninstalled. File history and tracked recovery copies are cleared. Active files and settings are preserved. Cleanup has stopped.')
         return
     if not args.no_service and not shutil.which('systemctl'):
-        parser.error('systemd is required for automatic startup. Use --no-service and run transist daemon with your own supervisor.')
+        parser.error('systemd is required for automatic startup. Use --no-service and run transit daemon with your own supervisor.')
     if not args.no_extension and not shutil.which('glib-compile-schemas'):
         parser.error('glib-compile-schemas is required to install the GNOME extension settings.')
     install_guard = not args.no_extension and not args.no_file_manager_guard
@@ -70,24 +74,25 @@ def main():
         compiler = shutil.which('cc')
         if not compiler:
             parser.error('Folder protection requires a C compiler (gcc on Ubuntu), or use --no-file-manager-guard.')
-        with tempfile.TemporaryDirectory(prefix='transist-build-') as temp:
+        with tempfile.TemporaryDirectory(prefix='transit-build-') as temp:
             output = Path(temp) / 'guard.so'
             subprocess.run([compiler, '-shared', '-fPIC', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', str(SOURCE / 'nautilus/guard_native.c'), '-o', str(output)], check=True)
             native_bytes = output.read_bytes()
+    direct_screenshots = migration.prepare(home, data, config)
     for path in (app, launcher.parent, unit.parent):
         path.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(SOURCE / 'transist', app / 'transist', dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+    shutil.copytree(SOURCE / 'transit', app / 'transit', dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     shutil.copy2(SOURCE / 'LICENSE', app / 'LICENSE')
-    launcher.write_text('#!' + sys.executable + '\nimport sys\nsys.path.insert(0, ' + repr(str(app)) + ')\nfrom transist.__main__ import main\nmain()\n')
+    launcher.write_text('#!' + sys.executable + '\nimport sys\nsys.path.insert(0, ' + repr(str(app)) + ')\nfrom transit.__main__ import main\nmain()\n')
     launcher.chmod(0o755)
     # systemd and desktop-file values have different escaping rules.
     systemd_path = str(launcher).replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
-    unit.write_text('[Unit]\nDescription=Transist temporary-file cleanup\n\n[Service]\nType=simple\nExecStart="' + systemd_path + '" daemon\nRestart=on-failure\nRestartSec=10\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n')
+    unit.write_text('[Unit]\nDescription=Transit temporary-file cleanup\n\n[Service]\nType=simple\nExecStart="' + systemd_path + '" daemon\nRestart=on-failure\nRestartSec=10\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n')
     # Preserve custom XDG locations for the user service.
     env_lines = ''.join('Environment=' + json.dumps(k + '=' + str(v)).replace('%', '%%') + '\n' for k, v in [('XDG_DATA_HOME', data), ('XDG_CONFIG_HOME', config)])
     unit.write_text(unit.read_text().replace('Type=simple\n', 'Type=simple\n' + env_lines))
     # Remove only the obsolete app entry and known GUI sources during upgrade.
-    for obsolete in (desktop, icon, app / 'transist/gui.py', app / 'transist/theme.py'):
+    for obsolete in (desktop, icon, app / 'transit/gui.py', app / 'transit/theme.py'):
         obsolete.unlink(missing_ok=True)
     if not args.no_extension:
         shutil.copytree(SOURCE / 'extension', extension, dirs_exist_ok=True)
@@ -98,19 +103,23 @@ def main():
         staged = native_guard.with_suffix('.so.new')
         staged.write_bytes(native_bytes)
         staged.replace(native_guard)
-        shutil.copy2(SOURCE / 'nautilus/transist_guard.py', file_manager_guard)
+        shutil.copy2(SOURCE / 'nautilus/transit_guard.py', file_manager_guard)
+    if direct_screenshots is not None and not args.no_extension:
+        subprocess.run(['gsettings', '--schemadir', str(extension / 'schemas'), 'set',
+                        'org.gnome.shell.extensions.transit', 'direct-screenshots', direct_screenshots], check=True)
     # Initialize only after dependencies are checked.
     sys.path.insert(0, str(app))
-    from transist.core import Store
-    with Store().session():
+    from transit.core import Store
+    with Store().session(resume=True):
         pass
+    migration.finish(home, data, config)
     if not args.no_service:
         subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True)
-        subprocess.run(['systemctl', '--user', 'enable', '--now', 'transist.service'], check=True)
-        subprocess.run(['systemctl', '--user', 'restart', 'transist.service'], check=True)
+        subprocess.run(['systemctl', '--user', 'enable', '--now', 'transit.service'], check=True)
+        subprocess.run(['systemctl', '--user', 'restart', 'transit.service'], check=True)
     print('Installed the extension and headless cleanup service. No desktop app is installed.')
     if args.no_service:
-        print('Cleanup is not running. Start ~/.local/bin/transist daemon when ready.')
+        print('Cleanup is not running. Start ~/.local/bin/transit daemon when ready.')
     if not args.no_extension:
         print('For GNOME: log out and back in, then run: env -u XDG_DATA_HOME -u XDG_CONFIG_HOME gnome-extensions enable ' + UUID)
     if install_guard:

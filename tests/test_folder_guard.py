@@ -8,7 +8,7 @@ import subprocess
 import unittest
 
 try:
-    spec = importlib.util.spec_from_file_location('transist_guard', Path(__file__).parents[1] / 'nautilus/transist_guard.py')
+    spec = importlib.util.spec_from_file_location('transit_guard', Path(__file__).parents[1] / 'nautilus/transit_guard.py')
     guard_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(guard_module)
     from gi.repository import Gio, GLib
@@ -32,7 +32,7 @@ class FolderGuardTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.home = Path(self.temp.name)
-        self.root = self.home / '_transist'
+        self.root = self.home / '_transit'
         self.root.mkdir()
         self.guard = guard_module.FolderGuard(self.root, library=self.library)
 
@@ -66,9 +66,9 @@ class FolderGuardTests(unittest.TestCase):
         self.assertEqual(self.guard.removal_attempts, 0)
 
     def test_only_exact_root_is_protected(self):
-        nested = self.root / '_transist'
+        nested = self.root / '_transit'
         nested.mkdir()
-        similar = self.home / '_transist-backup'
+        similar = self.home / '_transit-backup'
         similar.mkdir()
         self.assertTrue(self.file(nested).delete(None))
         self.assertTrue(self.file(similar).delete(None))
@@ -113,10 +113,10 @@ class FolderGuardTests(unittest.TestCase):
     def test_disabled_removal_stops_service_and_records_request(self):
         self.guard.close()
         marker = self.home / 'folder-removal-requested'
-        launcher = self.home / 'transist'
+        launcher = self.home / 'transit'
         launcher.touch()
         command = self.home / 'systemctl'
-        command.write_text('#!/bin/sh\n[ "$*" = "--user stop transist.service" ]\n')
+        command.write_text('#!/bin/sh\n[ "$*" = "--user stop transit.service" ]\n')
         command.chmod(0o700)
         self.guard = guard_module.FolderGuard(self.root, enabled=False,
                 marker=marker, launcher=launcher, library=self.library)
@@ -128,7 +128,7 @@ class FolderGuardTests(unittest.TestCase):
     def test_service_stop_failure_preserves_root_and_contents(self):
         self.guard.close()
         marker = self.home / 'folder-removal-requested'
-        launcher = self.home / 'transist'
+        launcher = self.home / 'transit'
         launcher.touch()
         command = self.home / 'systemctl'
         command.write_text('#!/bin/sh\nexit 1\n')

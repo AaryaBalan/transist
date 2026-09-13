@@ -8,7 +8,7 @@ import GLib from 'gi://GLib';
 import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import { fileRows, lifetimeOptions, lifetimeLabel } from './view-model.js';
 
-export default class TransistPreferences extends ExtensionPreferences {
+export default class TransitPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         this._window = window;
         this._closed = false;
@@ -17,8 +17,8 @@ export default class TransistPreferences extends ExtensionPreferences {
         this._queue = [];
         this._views = {};
         this._snapshot = null;
-        this._settings = this.getSettings('org.gnome.shell.extensions.transist');
-        this._backend = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'transist']);
+        this._settings = this.getSettings('org.gnome.shell.extensions.transit');
+        this._backend = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'transit']);
         window.set_default_size(960, 720);
         window.set_search_enabled(true);
         for (const [name, title, icon] of [['active', 'Active Files', 'folder-symbolic'], ['history', 'Recently Deleted', 'document-open-recent-symbolic']]) {
@@ -49,10 +49,10 @@ export default class TransistPreferences extends ExtensionPreferences {
         const settings = new Adw.PreferencesPage({ name: 'settings', title: 'Settings', icon_name: 'emblem-system-symbolic' });
         const folderSafety = new Adw.PreferencesGroup({ title: 'Folder safety' });
         settings.add(folderSafety);
-        const guide = new Adw.PreferencesGroup({ title: 'How Transist works', description: 'A temporary home for files you only need for a while.' });
+        const guide = new Adw.PreferencesGroup({ title: 'How Transit works', description: 'A temporary home for files you only need for a while.' });
         for (const [title, subtitle] of [
-            ['1. Add files', 'Place files directly in ~/_transist, or enable screenshot saving above. Each file’s timer starts when Transist first detects it.'],
-            ['2. Choose a cleanup window', 'Temporary files leave _transist when their timers run out. Keep Permanently exempts a file from automatic cleanup.'],
+            ['1. Add files', 'Place files directly in ~/_transit, or enable screenshot saving above. Each file’s timer starts when Transit first detects it.'],
+            ['2. Choose a cleanup window', 'Temporary files leave _transit when their timers run out. Keep Permanently exempts a file from automatic cleanup.'],
             ['3. Recover within seven days', 'Expired files move to Recently Deleted. Recovery copies still use disk space and are permanently deleted seven days later. Restore starts a fresh timer using your selected window.'],
         ])
             guide.add(new Adw.ActionRow({ title, subtitle, use_markup: false }));
@@ -72,7 +72,7 @@ export default class TransistPreferences extends ExtensionPreferences {
         });
         this._controls.add(this._lifetime);
         const directGroup = new Adw.PreferencesGroup({ title: 'Screenshot destination' });
-        const directRow = new Adw.ActionRow({ title: 'Store screenshots directly in _transist', use_markup: false });
+        const directRow = new Adw.ActionRow({ title: 'Store screenshots directly in _transit', use_markup: false });
         const directSwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER });
         directRow.add_suffix(directSwitch);
         directRow.set_activatable_widget(directSwitch);
@@ -80,7 +80,7 @@ export default class TransistPreferences extends ExtensionPreferences {
         const syncDirectStatus = () => {
             directRow.subtitle = this._settings.get_boolean('direct-screenshots-ready')
                 ? 'Save new screenshots from GNOME’s screenshot tool here immediately. Turn off to use GNOME’s normal folder. Requires the extension to stay enabled.'
-                : 'Log out and back in once to load direct saving, and keep Transist enabled. This applies to GNOME’s screenshot tool; other apps use their own save settings.';
+                : 'Log out and back in once to load direct saving, and keep Transit enabled. This applies to GNOME’s screenshot tool; other apps use their own save settings.';
         };
         syncDirectStatus();
         const directSignal = this._settings.connect('changed::direct-screenshots-ready', syncDirectStatus);
@@ -105,28 +105,28 @@ export default class TransistPreferences extends ExtensionPreferences {
         });
         this._deletionWarning.add_prefix(new Gtk.Image({ icon_name: 'security-high-symbolic' }));
         folderSafety.add(this._deletionWarning);
-        info.add(new Adw.ActionRow({ title: 'Stop the background service', subtitle: 'Run in Terminal: systemctl --user stop transist.service. Uninstall clears file history and tracked recovery copies; active files and Settings stay. Removing the whole _transist folder starts a fresh history next time.', use_markup: false }));
+        info.add(new Adw.ActionRow({ title: 'Stop the background service', subtitle: 'Run in Terminal: systemctl --user stop transit.service. Uninstall clears file history and tracked recovery copies; active files and Settings stay. Removing the whole _transit folder starts a fresh history next time.', use_markup: false }));
         this._service = new Adw.ActionRow({ title: 'Background cleanup', subtitle: 'Checking service…', use_markup: false });
         this._service.add_suffix(this._button('Refresh', () => this._refresh()));
         info.add(this._service);
         for (const [title, subtitle] of [
-            ['Temporary folder', '~/_transist — regular files directly inside this folder only.'],
+            ['Temporary folder', '~/_transit — regular files directly inside this folder only.'],
             ['Cleanup timing', 'Checks every 10 seconds while the service is running. Files must be unchanged for 30 seconds before removal. Making a file temporary starts a fresh timer using your selected window.'],
-            ['Independent service', 'Closing preferences or disabling the top-bar extension does not stop cleanup. Use Pause above, or stop transist.service.'],
+            ['Independent service', 'Closing preferences or disabling the top-bar extension does not stop cleanup. Use Pause above, or stop transit.service.'],
         ])
             info.add(new Adw.ActionRow({ title, subtitle, use_markup: false }));
         settings.add(info);
         settings.add(appearance);
         window.add(settings);
         const credits = new Adw.PreferencesPage({ name: 'credits', title: 'Credits', icon_name: 'help-about-symbolic' });
-        const creator = new Adw.PreferencesGroup({ title: 'Transist', description: 'Files for now. Space for what comes next.' });
+        const creator = new Adw.PreferencesGroup({ title: 'Transit', description: 'Files for now. Space for what comes next.' });
         creator.add(new Adw.ActionRow({ title: 'Made by Aarya B', subtitle: 'Creator and maintainer', use_markup: false }));
         credits.add(creator);
         const links = new Adw.PreferencesGroup({ title: 'Find and support the project' });
         for (const [title, subtitle, label, uri] of [
             ['GitHub', 'AaryaBalan', 'Open Profile', 'https://github.com/AaryaBalan'],
-            ['Source code', 'AaryaBalan / transist', 'Open Repository', 'https://github.com/AaryaBalan/transist'],
-            ['Star this repo', 'Enjoy using Transist? Give it a star on GitHub.', '★ Star this repo', 'https://github.com/AaryaBalan/transist'],
+            ['Source code', 'AaryaBalan / transit', 'Open Repository', 'https://github.com/AaryaBalan/transit'],
+            ['Star this repo', 'Enjoy using Transit? Give it a star on GitHub.', '★ Star this repo', 'https://github.com/AaryaBalan/transit'],
         ]) {
             const row = new Adw.ActionRow({ title, subtitle, use_markup: false });
             row.add_suffix(this._button(label, () => this._openUri(uri)));
@@ -170,7 +170,7 @@ export default class TransistPreferences extends ExtensionPreferences {
     }
 
     _openFolder() {
-        this._openPath(this._snapshot?.folder ?? GLib.build_filenamev([GLib.get_home_dir(), '_transist']));
+        this._openPath(this._snapshot?.folder ?? GLib.build_filenamev([GLib.get_home_dir(), '_transit']));
     }
 
     _openFile(name) {
@@ -198,7 +198,7 @@ export default class TransistPreferences extends ExtensionPreferences {
             try {
                 process = Gio.Subprocess.new([this._backend, ...args], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
             } catch (error) {
-                reject(new Error(`Install or update the Transist background service using install.py. ${error.message}`));
+                reject(new Error(`Install or update the Transit background service using install.py. ${error.message}`));
                 return;
             }
             process.communicate_utf8_async(null, null, (source, result) => {
@@ -234,7 +234,7 @@ export default class TransistPreferences extends ExtensionPreferences {
             this._syncControls();
             if (first || operation?.[1] === 'screenshot_folder')
                 this._folder.text = snapshot.settings.screenshot_folder;
-            const service = snapshot.service === 'active' ? (snapshot.settings.paused ? 'Paused' : 'Cleanup running') : 'Service offline — run: systemctl --user start transist.service';
+            const service = snapshot.service === 'active' ? (snapshot.settings.paused ? 'Paused' : 'Cleanup running') : 'Service offline — run: systemctl --user start transit.service';
             this._service.subtitle = service;
             for (const [name, view] of Object.entries(this._views)) {
                 view.status.title = service;
@@ -264,14 +264,14 @@ export default class TransistPreferences extends ExtensionPreferences {
             return;
         this._sync = true;
         this._deletionWarning.subtitle = this._snapshot.folder_guard_installed
-            ? 'GNOME Files blocks deleting _transist while this extension is enabled. Files inside it remain deletable. Disable Transist first to remove the folder. Restart Files after installing the companion. Terminal commands and other apps are not protected.'
-            : 'The GNOME Files companion is not installed. Run install.py to add folder protection. Deleting _transist also removes its recovery copies.';
+            ? 'GNOME Files blocks deleting _transit while this extension is enabled. Files inside it remain deletable. Disable Transit first to remove the folder. Restart Files after installing the companion. Terminal commands and other apps are not protected.'
+            : 'The GNOME Files companion is not installed. Run install.py to add folder protection. Deleting _transit also removes its recovery copies.';
         this._capture.active = this._snapshot.settings.capture_screenshots;
         this._pause.active = this._snapshot.settings.paused;
         this._lifetime.selected = lifetimeOptions.indexOf(this._snapshot.settings.lifetime_hours ?? 5);
         const duration = lifetimeLabel(this._snapshot.settings.lifetime_hours);
         this._views.active.files.description = this._snapshot.folder_removed
-            ? 'The folder was removed. Re-enable Transist to start a fresh collection.'
+            ? 'The folder was removed. Re-enable Transit to start a fresh collection.'
             : `Temporary files are removed after ${duration}; permanent files stay. Change the window in Settings. Use the eye icon to open a file.`;
         this._views.history.files.description = `Recover within seven days of removal. Restoring starts a fresh ${duration} timer.`;
         this._sync = false;
@@ -289,7 +289,7 @@ export default class TransistPreferences extends ExtensionPreferences {
         const view = this._views[name];
         const missing = this._snapshot.missing_recovery_count ?? 0;
         view.storageWarning.visible = missing > 0;
-        view.storageWarning.subtitle = `${missing} recovery ${missing === 1 ? 'copy is' : 'copies are'} missing or replaced. Removing _transist also removes its recovery folder. Check system Trash; history entries alone cannot restore files.`;
+        view.storageWarning.subtitle = `${missing} recovery ${missing === 1 ? 'copy is' : 'copies are'} missing or replaced. Removing _transit also removes its recovery folder. Check system Trash; history entries alone cannot restore files.`;
         for (const child of view.children)
             view.files.remove(child);
         view.children = [];
@@ -304,7 +304,7 @@ export default class TransistPreferences extends ExtensionPreferences {
         const rows = fileRows(this._snapshot, name, view.search.text);
         view.status.subtitle = `${rows.length} ${name === 'active' ? 'active files' : 'history entries'}${view.search.text ? ' matching your search' : ''}`;
         if (!rows.length)
-            add(new Adw.ActionRow({ title: view.search.text ? 'No matching files' : name === 'active' ? 'Your folder is clear' : 'No deleted files yet', subtitle: name === 'active' ? 'Place files directly in ~/_transist to start their timers.' : 'Expired files appear here for recovery.', use_markup: false }));
+            add(new Adw.ActionRow({ title: view.search.text ? 'No matching files' : name === 'active' ? 'Your folder is clear' : 'No deleted files yet', subtitle: name === 'active' ? 'Place files directly in ~/_transit to start their timers.' : 'Expired files appear here for recovery.', use_markup: false }));
         for (const item of rows.slice(0, view.limit)) {
             const row = new Adw.ActionRow({ title: item.name, subtitle: item.subtitle, use_markup: false, title_lines: 1, subtitle_lines: 2 });
             row.set_tooltip_text(item.name);

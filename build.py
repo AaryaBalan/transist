@@ -26,11 +26,11 @@ def main():
         relative = path.relative_to(ROOT)
         if not path.is_file() or any(part in {'dist', '__pycache__', '.git', '.venv'} for part in relative.parts) or path.suffix == '.pyc':
             continue
-        sources.append((path, 'transist/' + relative.as_posix()))
-    archive(DIST / 'transist-v0.1.0.zip', sources)
+        sources.append((path, 'transit/' + relative.as_posix()))
+    archive(DIST / 'transit-v0.1.0.zip', sources)
     extension = [(path, path.relative_to(ROOT / 'extension').as_posix()) for path in (ROOT / 'extension').rglob('*') if path.is_file()]
     extension.append((ROOT / 'LICENSE', 'LICENSE'))
-    archive(DIST / 'transist@aaryabalan.local.shell-extension.zip', extension)
+    archive(DIST / 'transit@aaryabalan.local.shell-extension.zip', extension)
 
 
 if __name__ == '__main__':
