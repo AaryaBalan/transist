@@ -1,0 +1,74 @@
+import argparse
+import json
+import logging
+import signal
+import subprocess
+import threading
+from .core import Store
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Transist: files for now, recovery for a week')
+    commands = parser.add_subparsers(dest='command', required=True)
+    gui = commands.add_parser('gui')
+    gui.add_argument('--page', choices=['active', 'history', 'settings'], default='active')
+    for name in ('status', 'tick', 'daemon', 'open'):
+        commands.add_parser(name)
+    action = commands.add_parser('action')
+    action.add_argument('operation', choices=['pin', 'unpin', 'restore'])
+    action.add_argument('id')
+    config = commands.add_parser('config')
+    config.add_argument('key', choices=['paused', 'capture_screenshots', 'screenshot_folder', 'theme'])
+    config.add_argument('value')
+    args = parser.parse_args()
+    if args.command == 'gui':
+        # Compatibility alias: opens native extension preferences, never a desktop app.
+        subprocess.run(['gnome-extensions', 'prefs', 'transist@aaryabalan.local'], check=True)
+        return
+    store = Store()
+    if args.command == 'daemon':
+        logging.basicConfig(level=logging.INFO)
+        stop = threading.Event()
+        signal.signal(signal.SIGTERM, lambda *_: stop.set())
+        signal.signal(signal.SIGINT, lambda *_: stop.set())
+        previous_error = None
+        while not stop.is_set():
+            try:
+                with store.session() as s:
+                    s.tick()
+                previous_error = None
+            except Exception as error:
+                if str(error) != previous_error:
+                    logging.exception('Cleanup paused for this cycle; files retained')
+                    previous_error = str(error)
+            stop.wait(10)
+        return
+    try:
+        with store.session() as s:
+            if args.command == 'tick':
+                s.tick()
+            elif args.command == 'action':
+                s.action(args.id, args.operation)
+            elif args.command == 'config':
+                value = args.value
+                if args.key in ('paused', 'capture_screenshots'):
+                    if value not in ('true', 'false'):
+                        raise ValueError('Use true or false')
+                    value = value == 'true'
+                s.configure(args.key, value)
+            elif args.command == 'open':
+                subprocess.Popen(['xdg-open', str(s.root)], start_new_session=True)
+                return
+            snapshot = s.snapshot()
+        try:
+            check = subprocess.run(['systemctl', '--user', 'is-active', 'transist.service'], capture_output=True, text=True, timeout=3)
+            snapshot['service'] = check.stdout.strip() or 'unavailable'
+        except (OSError, subprocess.TimeoutExpired):
+            snapshot['service'] = 'unavailable'
+        print(json.dumps(snapshot))
+    except (OSError, ValueError) as error:
+        parser.exit(1, f'Transist: {error}\n')
+
+
+if __name__ == '__main__':
+    main()

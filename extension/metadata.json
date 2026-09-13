@@ -1,0 +1,7 @@
+{
+  "uuid": "transist@aaryabalan.local",
+  "name": "Transist",
+  "description": "Temporary files, recovery, and screenshot settings inside GNOME extension preferences. Requires the Transist background service; no separate desktop app.",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "version": 2
+}
