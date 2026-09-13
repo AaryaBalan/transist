@@ -41,7 +41,7 @@ def main():
     unit = config / 'systemd/user/transist.service'
     desktop = data / 'applications/io.github.transist.App.desktop'
     icon = data / 'icons/hicolor/scalable/apps/io.github.transist.App.svg'
-    extension = data / 'gnome-shell/extensions' / UUID
+    extension = home / '.local/share/gnome-shell/extensions' / UUID
     file_manager_guard = data / 'nautilus-python/extensions/transist_guard.py'
     native_guard = file_manager_guard.with_name('transist_guard_native.so')
     if args.uninstall:
@@ -112,10 +112,10 @@ def main():
     if args.no_service:
         print('Cleanup is not running. Start ~/.local/bin/transist daemon when ready.')
     if not args.no_extension:
-        print('For GNOME: log out and back in, then run: gnome-extensions enable ' + UUID)
+        print('For GNOME: log out and back in, then run: env -u XDG_DATA_HOME -u XDG_CONFIG_HOME gnome-extensions enable ' + UUID)
     if install_guard:
         print('Restart GNOME Files to load folder protection: nautilus --quit')
-    print('Open settings: gnome-extensions prefs ' + UUID)
+    print('Open settings: env -u XDG_DATA_HOME -u XDG_CONFIG_HOME gnome-extensions prefs ' + UUID)
     print('Existing settings and file history are preserved. Screenshot capture defaults to OFF for new installs.')
 
 
