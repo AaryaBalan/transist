@@ -16,6 +16,13 @@ its temporary status.
 
 ![Transist Active Files](assets/transist-active.png)
 
+### Recently Deleted
+
+Open **Recently Deleted** to see files that have been automatically removed and
+are still within the recovery period.
+
+![Transist Recently Deleted](assets/transist-history.png)
+
 ### Settings
 
 Choose the cleanup time, configure screenshots, pause cleanup, and view folder
@@ -53,6 +60,20 @@ Subfolders and special files are left alone.
 In **Active Files**, click **Keep Permanently** for a file. It stays in
 `_transist` until you remove it yourself. Click **Make Temporary** later to
 start a new timer.
+
+### Restore a file
+
+1. Open **Recently Deleted**.
+2. Find the file you want to recover.
+3. Click **Restore** before the seven-day recovery period ends.
+
+The file returns to `~/_transist` and starts a new timer using the cleanup time
+currently selected in **Settings**. For example, if your setting is one hour,
+a restored file gets a new one-hour timer. Restoring does not continue the old
+timer.
+
+If the recovery copy is missing or the seven-day period has ended, the Restore
+button is unavailable. A history entry by itself cannot recreate the file.
 
 ## Install
 
