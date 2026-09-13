@@ -18,7 +18,7 @@ def main():
     action.add_argument('operation', choices=['pin', 'unpin', 'restore'])
     action.add_argument('id')
     config = commands.add_parser('config')
-    config.add_argument('key', choices=['paused', 'capture_screenshots', 'screenshot_folder', 'theme'])
+    config.add_argument('key', choices=['paused', 'capture_screenshots', 'screenshot_folder', 'theme', 'lifetime_hours'])
     config.add_argument('value')
     args = parser.parse_args()
     if args.command == 'gui':
@@ -55,6 +55,8 @@ def main():
                     if value not in ('true', 'false'):
                         raise ValueError('Use true or false')
                     value = value == 'true'
+                elif args.key == 'lifetime_hours':
+                    value = int(value)
                 s.configure(args.key, value)
             elif args.command == 'open':
                 subprocess.Popen(['xdg-open', str(s.root)], start_new_session=True)

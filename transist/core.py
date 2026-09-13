@@ -10,6 +10,7 @@ import time
 import uuid
 
 TTL = 5 * 3600
+LIFETIME_HOURS = (1, 5, 12, 24, 48, 72, 168)
 RETENTION = 7 * 86400
 QUIET = 30
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.avif', '.bmp', '.tiff'}
@@ -88,6 +89,7 @@ class Store:
                     if Path(value).is_absolute():
                         pictures = Path(value)
         result = {'paused': False, 'capture_screenshots': False, 'theme': 'light',
+                  'lifetime_hours': 5,
                   'screenshot_folder': str(pictures / 'Screenshots')}
         result.update({r['key']: json.loads(r['value']) for r in self.db.execute('SELECT * FROM settings')})
         return result
@@ -99,6 +101,8 @@ class Store:
             raise ValueError('Theme must be light or dark')
         if key in ('paused', 'capture_screenshots') and type(value) is not bool:
             raise ValueError('Expected true or false')
+        if key == 'lifetime_hours' and (type(value) is not int or value not in LIFETIME_HOURS):
+            raise ValueError('Choose 1, 5, 12, 24, 48, 72, or 168 hours (1 week)')
         if key == 'screenshot_folder':
             p = Path(value).expanduser().resolve()
             if not p.is_dir() or p == self.home or p == self.root or self.root in p.parents:
@@ -110,6 +114,10 @@ class Store:
         self.db.execute('BEGIN IMMEDIATE')
         try:
             self.db.execute('INSERT OR REPLACE INTO settings VALUES (?,?)', (key, json.dumps(value)))
+            if key == 'lifetime_hours':
+                # Preserve each timer's start, including timers reset by unpinning.
+                self.db.execute("UPDATE files SET expires=expires+? WHERE status='active' AND permanent=0",
+                                ((value - old[key]) * 3600,))
             if key in ('capture_screenshots', 'screenshot_folder'):
                 self.db.execute('DELETE FROM shots')
                 if self.settings()['capture_screenshots']:
@@ -148,7 +156,7 @@ class Store:
                     s = self.info(dstfd, dst)
                     now = self.clock()
                     self.db.execute("UPDATE files SET status='active',name=?,sig=?,stable=?,added=?,expires=?,permanent=0,deleted=NULL,purge_at=NULL,destination=NULL WHERE id=?",
-                                    (dst, signature(s), now, now, now + TTL, r['id']))
+                                    (dst, signature(s), now, now, now + self.settings()['lifetime_hours'] * 3600, r['id']))
                 else:
                     self.db.execute("UPDATE files SET status='deleted' WHERE id=?", (r['id'],))
             elif self.matches(srcfd, src, r):
@@ -187,6 +195,7 @@ class Store:
 
     def scan(self):
         now = self.clock()
+        lifetime = self.settings()['lifetime_hours'] * 3600
         rows = {r['name']: r for r in self.db.execute("SELECT * FROM files WHERE status='active'")}
         present = set()
         for name in os.listdir(self.rootfd):
@@ -200,7 +209,7 @@ class Store:
                 old = None
             if old is None:
                 self.db.execute('INSERT INTO files (id,name,dev,ino,sig,stable,added,expires,status) VALUES (?,?,?,?,?,?,?,?,?)',
-                                (uuid.uuid4().hex, name, s.st_dev, s.st_ino, signature(s), now, now, now + TTL, 'active'))
+                                (uuid.uuid4().hex, name, s.st_dev, s.st_ino, signature(s), now, now, now + lifetime, 'active'))
             elif old['sig'] != signature(s):
                 self.db.execute('UPDATE files SET sig=?,stable=? WHERE id=?', (signature(s), now, old['id']))
         for name, r in rows.items():
@@ -301,7 +310,7 @@ class Store:
         elif action in ('pin', 'unpin'):
             if r['status'] != 'active' or not self.matches(self.rootfd, r['name'], r):
                 raise ValueError('File is no longer active')
-            self.db.execute('UPDATE files SET permanent=?,expires=? WHERE id=?', (int(action == 'pin'), self.clock() + TTL, file_id))
+            self.db.execute('UPDATE files SET permanent=?,expires=? WHERE id=?', (int(action == 'pin'), self.clock() + self.settings()['lifetime_hours'] * 3600, file_id))
         else:
             raise ValueError('Unknown action')
 

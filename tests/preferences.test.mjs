@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 const source = await readFile(new URL('../extension/view-model.js', import.meta.url), 'utf8');
-const {fileRows, remaining} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const {fileRows, remaining, lifetimeOptions, lifetimeLabel} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const snapshot = {now: 1000, files: [
     {id: 'a', name: '<b>notes</b>.txt', status: 'active', permanent: 0, expires: 19000, added: 1},
     {id: 'p', name: 'Keep.PNG', status: 'active', permanent: 1, expires: 0, added: 2},
@@ -29,6 +29,16 @@ test('duration labels clamp overdue timers', () => {
     assert.equal(remaining(-60), '0h 0m');
     assert.equal(remaining(18000), '5h 0m');
     assert.equal(remaining(7 * 86400), '7d 0h');
+});
+test('all selectable windows have matching restore labels', () => {
+    assert.deepEqual(lifetimeOptions, [1, 5, 12, 24, 48, 72, 168]);
+    assert.equal(lifetimeLabel(1), '1 hour');
+    assert.equal(lifetimeLabel(168), '1 week');
+    assert.equal(fileRows(snapshot, 'history')[0].label, 'Restore · 5 hours');
+    for (const hours of lifetimeOptions) {
+        const configured = {...snapshot, settings: {lifetime_hours: hours}};
+        assert.equal(fileRows(configured, 'history')[0].label, `Restore · ${lifetimeLabel(hours)}`);
+    }
 });
 test('native preferences own the UI with no standalone GUI or CSS override', async () => {
     const prefs = await readFile(new URL('../extension/prefs.js', import.meta.url), 'utf8');

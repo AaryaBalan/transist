@@ -25,7 +25,7 @@ class InstallerTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('old app')
             keep = home / '_transist/keep.txt'
-            keep.parent.mkdir()
+            keep.parent.mkdir(mode=0o700)
             keep.write_text('keep me')
             old_path = sys.path[:]
             try:
@@ -35,6 +35,10 @@ class InstallerTests(unittest.TestCase):
                 result = subprocess.run([str(launcher), 'status'], env={**os.environ, **env}, capture_output=True, text=True, check=True)
                 self.assertEqual(json.loads(result.stdout)['folder'], str(home / '_transist'))
                 self.assertIn('service', json.loads(result.stdout))
+                result = subprocess.run([str(launcher), 'config', 'lifetime_hours', '48'], env={**os.environ, **env}, capture_output=True, text=True, check=True)
+                self.assertEqual(json.loads(result.stdout)['settings']['lifetime_hours'], 48)
+                result = subprocess.run([str(launcher), 'config', 'lifetime_hours', '2'], env={**os.environ, **env}, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(desktop.exists())
                 self.assertFalse(old_gui.exists())
                 self.assertFalse(old_theme.exists())

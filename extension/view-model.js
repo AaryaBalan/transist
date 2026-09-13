@@ -1,4 +1,10 @@
 // Pure presentation logic, shared with automated tests.
+export const lifetimeOptions = [1, 5, 12, 24, 48, 72, 168];
+
+export function lifetimeLabel(hours = 5) {
+    return hours === 168 ? '1 week' : `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+}
+
 export function remaining(seconds) {
     const minutes = Math.max(0, Math.floor(seconds / 60));
     return minutes >= 1440 ? `${Math.floor(minutes / 1440)}d ${Math.floor(minutes % 1440 / 60)}h` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
@@ -15,7 +21,7 @@ export function fileRows(snapshot, page, query = '') {
                 id: file.id, name: file.name,
                 icon: active ? (file.permanent ? 'emblem-important-symbolic' : 'text-x-generic-symbolic') : 'document-open-recent-symbolic',
                 subtitle: active ? (file.permanent ? 'Permanent · no expiry' : `${remaining(file.expires - snapshot.now)} remaining`) : `Deleted ${new Date(file.deleted * 1000).toLocaleString()} · ${valid ? `Recover for ${remaining(file.purge_at - snapshot.now)}` : 'Recovery period ended'}`,
-                label: active ? (file.permanent ? 'Make Temporary' : 'Keep Permanently') : 'Restore · 5 hours',
+                label: active ? (file.permanent ? 'Make Temporary' : 'Keep Permanently') : `Restore · ${lifetimeLabel(snapshot.settings?.lifetime_hours)}`,
                 action: active ? (file.permanent ? 'unpin' : 'pin') : 'restore',
                 enabled: active || valid,
             };

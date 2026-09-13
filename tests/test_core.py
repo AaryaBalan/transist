@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from transist.core import Store, TTL, RETENTION, QUIET
+from transist.core import Store, TTL, RETENTION, QUIET, LIFETIME_HOURS
 
 
 class EngineTests(unittest.TestCase):
@@ -44,6 +44,87 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(row['status'], 'deleted')
         self.assertFalse(path.exists())
         self.assertEqual((self.store.root / '.transist-recovery' / row['id']).read_bytes(), b'valuable data')
+
+    def test_every_cleanup_window_expires_at_its_deadline(self):
+        for hours in LIFETIME_HOURS:
+            with self.subTest(hours=hours):
+                with self.store.session() as s:
+                    s.configure('lifetime_hours', hours)
+                path = self.write(f'{hours}.txt')
+                rows = self.tick()
+                row = next(r for r in rows if r['name'] == path.name)
+                self.assertEqual(row['expires'], self.now + hours * 3600)
+                self.now += hours * 3600 - 1
+                self.tick()
+                self.assertTrue(path.exists())
+                self.now += 1
+                self.tick()
+                self.assertFalse(path.exists())
+
+    def test_window_change_preserves_elapsed_time_and_recovery_deadline(self):
+        deleted = self.expire()
+        path = self.write('active.txt')
+        row = next(r for r in self.tick() if r['name'] == path.name)
+        self.now += 2 * 3600
+        with self.store.session() as s:
+            s.configure('lifetime_hours', 12)
+            active = next(r for r in s.snapshot()['files'] if r['id'] == row['id'])
+            self.assertEqual(active['expires'], row['added'] + 12 * 3600)
+            s.configure('lifetime_hours', 1)
+            recovery = next(r for r in s.snapshot()['files'] if r['id'] == deleted['id'])
+            self.assertEqual(recovery['purge_at'], deleted['purge_at'])
+        self.tick()
+        self.assertFalse(path.exists())
+
+    def test_selected_window_survives_restart_and_applies_to_restore_and_unpin(self):
+        deleted = self.expire()
+        with self.store.session() as s:
+            s.configure('lifetime_hours', 72)
+        fresh = Store(home=self.home, data=self.home / 'data', clock=lambda: self.now)
+        with fresh.session() as s:
+            self.assertEqual(s.settings()['lifetime_hours'], 72)
+            s.action(deleted['id'], 'restore')
+            self.assertEqual(s.snapshot()['files'][0]['expires'], self.now + 72 * 3600)
+            s.action(deleted['id'], 'pin')
+            pinned_deadline = s.snapshot()['files'][0]['expires']
+            s.configure('lifetime_hours', 1)
+            self.assertEqual(s.snapshot()['files'][0]['expires'], pinned_deadline)
+        self.now += 4 * 3600
+        self.assertEqual(self.tick()[0]['status'], 'active')
+        with self.store.session() as s:
+            s.action(deleted['id'], 'unpin')
+            self.assertEqual(s.snapshot()['files'][0]['expires'], self.now + 3600)
+        start = self.now
+        self.now += 1800
+        with self.store.session() as s:
+            s.configure('lifetime_hours', 5)
+            self.assertEqual(s.snapshot()['files'][0]['expires'], start + TTL)
+            s.configure('lifetime_hours', 5)
+            self.assertEqual(s.snapshot()['files'][0]['expires'], start + TTL)
+
+    def test_window_change_while_paused_defers_removal_until_resume(self):
+        path = self.write()
+        self.tick()
+        self.now += 2 * 3600
+        with self.store.session() as s:
+            s.configure('paused', True)
+            s.configure('lifetime_hours', 1)
+        self.tick()
+        self.assertTrue(path.exists())
+        with self.store.session() as s:
+            s.configure('paused', False)
+        self.tick()
+        self.assertFalse(path.exists())
+
+    def test_invalid_windows_leave_setting_and_deadlines_unchanged(self):
+        self.write()
+        row = self.tick()[0]
+        with self.store.session() as s:
+            for value in (0, -1, 2, 169, True, 1.0, '12', None):
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    s.configure('lifetime_hours', value)
+            self.assertEqual(s.settings()['lifetime_hours'], 5)
+            self.assertEqual(s.snapshot()['files'][0]['expires'], row['expires'])
 
     def test_restore_resets_five_hours(self):
         row = self.expire()

@@ -2,9 +2,10 @@
 
 **Files, recovery history, and settings in one native preferences window.**
 
-Drop any regular file directly into `~/_transist`. It expires after five hours,
-remains recoverable for seven days, and can be restored for another five hours
-or marked permanent.
+Drop any regular file directly into `~/_transist`. Choose a cleanup window of
+**1, 5, 12, 24, 48, or 72 hours, or 1 week** in Settings (default: five hours).
+Expired files remain recoverable for seven days. Restore starts a fresh timer
+using your selected window; permanent files do not expire.
 
 ## Native preferences update
 
@@ -13,9 +14,9 @@ Settings, or choose **Files, History & Settings** from the top-bar menu.
 
 The preferences window contains:
 
-- **Active Files:** search filenames, view countdowns, keep permanently, or make temporary.
+- **Active Files:** search filenames, view countdowns, open individual files with the eye icon, keep permanently, or make temporary.
 - **Recently Deleted:** search history and restore eligible files.
-- **Settings:** screenshot capture, screenshot folder, pause, and service status.
+- **Settings:** how cleanup works, cleanup window, screenshot capture, screenshot folder, pause, and service status.
 
 The interface uses GTK 4 / libadwaita directly inside `prefs.js`, following GNOME's
 native system light/dark appearance. It does not force a custom palette or inject
@@ -67,11 +68,16 @@ yourself; no alternate autostart integration is installed.
 
 1. Open **Transist extension preferences**.
 2. Click **Open Folder** and place files directly into `~/_transist`.
-3. In **Active Files**, select **Keep Permanently** or **Make Temporary**.
-4. In **Recently Deleted**, select **Restore · 5 hours** during the recovery window.
-5. In **Settings**, enable screenshot capture and edit its source folder. Click
+3. In **Settings**, choose **Automatically remove files after**. This saves immediately
+   and applies to new and existing temporary files from each timer's original start.
+   Shortening the window can make older files expire on the next cleanup cycle.
+4. In **Active Files**, click a file's **eye icon** to open it in its default app,
+   or select **Keep Permanently** or **Make Temporary**.
+5. In **Recently Deleted**, select **Restore** during the recovery window. Its label
+   shows the duration of the fresh timer.
+6. In **Settings**, enable screenshot capture and edit its source folder. Click
    the entry's apply/check button to save the folder.
-6. Use each page's filename search; lists load 100 entries at a time with **Show more**.
+7. Use each page's filename search; lists load 100 entries at a time with **Show more**.
 
 Missing backend and operation failures appear in preferences, rather than silently
 opening another app. The UI refreshes every ten seconds and performs backend calls
@@ -90,12 +96,13 @@ Other screenshot programs can also be configured to save directly into `~/_trans
 
 | Event | Result |
 | --- | --- |
-| File first detected directly in `_transist` | Five-hour timer starts |
-| Five-hour deadline reached | Moves to hidden private recovery storage on the next cleanup cycle |
-| Restore within seven days of that move | Returns to `_transist` with a fresh five hours |
+| File first detected directly in `_transist` | Timer starts using the selected cleanup window |
+| Selected deadline reached | Moves to hidden private recovery storage on the next cleanup cycle |
+| Change cleanup window | Existing temporary deadlines are recalculated from their timer starts; permanent files and recovery deadlines are unchanged |
+| Restore within seven days of that move | Returns to `_transist` with a fresh timer using the current window |
 | Same name already exists on restore | Restored file gets a unique suffix; existing item remains untouched |
 | Keep permanently | File stays in place with no expiry |
-| Make temporary | New five-hour timer starts |
+| Make temporary | New timer starts using the current window |
 | Seven days after the move to recovery | Recovery copy is permanently unlinked on the next cycle; filename/timestamps remain in history |
 | Pause | No automatic screenshot moves, expiry, or purging; clocks still advance |
 | Resume | Overdue files are processed; pause does not extend recovery eligibility |
@@ -127,9 +134,12 @@ systemctl --user start transist.service
 ~/.local/bin/transist status
 ~/.local/bin/transist config paused true
 ~/.local/bin/transist config paused false
+~/.local/bin/transist config lifetime_hours 24
 ~/.local/bin/transist config capture_screenshots true
 ~/.local/bin/transist config screenshot_folder "$HOME/Pictures/Screenshots"
 ```
+
+`lifetime_hours` accepts `1`, `5`, `12`, `24`, `48`, `72`, or `168` (1 week).
 
 `status` returns JSON including file IDs. Actions use these IDs, not filenames:
 
