@@ -137,35 +137,33 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(restored['status'], 'active')
         self.assertEqual((self.store.root / 'note.txt').read_bytes(), b'valuable data')
 
-    def test_deleted_root_reconciles_active_and_recovery_without_restore_offer(self):
-        deleted = self.expire()
+    def test_deleted_root_starts_fresh_without_unavailable_history(self):
+        self.expire()
         self.write('active.txt')
         self.tick()
         shutil.rmtree(self.store.root)
         with self.store.session() as s:
-            snapshot = s.snapshot()
-            self.assertTrue(s.storage_recreated)
-            self.assertEqual(snapshot['missing_recovery_count'], 1)
-            rows = {r['name']: r for r in snapshot['files']}
-            self.assertEqual(rows['active.txt']['status'], 'missing')
-            self.assertEqual(rows['note.txt']['status'], 'recovery_missing')
-            self.assertEqual(rows['note.txt']['purge_at'], deleted['purge_at'])
-            with self.assertRaisesRegex(ValueError, 'system Trash'):
-                s.action(deleted['id'], 'restore')
-        with self.store.session() as s:
             self.assertFalse(s.storage_recreated)
-            self.assertEqual(s.snapshot()['missing_recovery_count'], 1)
+            self.assertEqual(s.snapshot()['files'], [])
+            self.assertEqual(s.snapshot()['missing_recovery_count'], 0)
+        self.write('new.txt')
+        row = self.tick()[0]
+        with self.store.session() as s:
+            self.assertEqual(s.snapshot()['files'][0]['id'], row['id'])
 
     def test_intentionally_removed_folder_is_not_recreated_until_reenabled(self):
+        self.expire()
         (self.store.data / 'folder-removal-requested').touch()
         shutil.rmtree(self.store.root)
-        with self.assertRaisesRegex(ValueError, 'Enable the extension again'):
-            with self.store.session():
-                pass
+        with self.store.session() as s:
+            s.tick()
+            self.assertTrue(s.snapshot()['folder_removed'])
+            self.assertEqual(s.snapshot()['files'], [])
+            self.assertEqual(s.snapshot()['missing_recovery_count'], 0)
         self.assertFalse(self.store.root.exists())
         (self.store.data / 'folder-removal-requested').unlink()
-        with self.store.session():
-            pass
+        with self.store.session() as s:
+            self.assertEqual(s.snapshot()['files'], [])
         self.assertTrue(self.store.root.is_dir())
 
     def test_deleted_recovery_folder_is_unavailable_even_while_paused(self):
@@ -190,20 +188,63 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(snapshot['missing_recovery_count'], 1)
             self.assertNotIn('active', [r['status'] for r in snapshot['files']])
 
-    def test_moved_root_does_not_erase_trash_and_returned_recovery_can_restore(self):
+    def test_removed_root_resets_history_without_erasing_system_trash(self):
         deleted = self.expire()
         trashed = self.home / 'trashed-folder'
         self.store.root.rename(trashed)
         vault_file = trashed / '.transist-recovery' / deleted['id']
         with self.store.session() as s:
-            self.assertEqual(s.snapshot()['files'][0]['status'], 'recovery_missing')
+            self.assertEqual(s.snapshot()['files'], [])
             self.assertEqual(vault_file.read_bytes(), b'valuable data')
-        vault_file.rename(self.store.root / '.transist-recovery' / deleted['id'])
+
+    def test_replaced_root_is_fresh_even_if_recreated_between_checks(self):
+        self.expire()
+        self.store.root.rename(self.home / 'old-folder')
+        self.store.root.mkdir(mode=0o700)
         with self.store.session() as s:
-            self.assertEqual(s.snapshot()['files'][0]['status'], 'deleted')
+            self.assertEqual(s.snapshot()['files'], [])
             self.assertEqual(s.snapshot()['missing_recovery_count'], 0)
-            s.action(deleted['id'], 'restore')
-        self.assertEqual((self.store.root / 'note.txt').read_bytes(), b'valuable data')
+
+    def test_extension_uninstall_resets_once_and_keeps_active_files(self):
+        extension = self.home / '.local/share/gnome-shell/extensions/transist@aaryabalan.local'
+        extension.mkdir(parents=True)
+        deleted = self.expire()
+        active = self.write('keep.txt')
+        self.tick()
+        with self.store.session() as s:
+            s.configure('lifetime_hours', 12)
+        shutil.rmtree(extension)
+        with self.store.session() as s:
+            self.assertEqual(s.snapshot()['files'], [])
+            self.assertEqual(s.settings()['lifetime_hours'], 12)
+        self.assertTrue(active.exists())
+        self.assertFalse((self.store.root / '.transist-recovery' / deleted['id']).exists())
+        extension.mkdir()
+        rows = self.tick()
+        self.assertEqual([r['name'] for r in rows], ['keep.txt'])
+        with self.store.session() as s:
+            self.assertEqual(s.snapshot()['files'][0]['id'], rows[0]['id'])
+
+    def test_disabling_or_upgrading_extension_does_not_reset_history(self):
+        extension = self.home / '.local/share/gnome-shell/extensions/transist@aaryabalan.local'
+        extension.mkdir(parents=True)
+        metadata = extension / 'metadata.json'
+        metadata.write_text('old version')
+        deleted = self.expire()
+        extension.rename(extension.with_name('old-version'))
+        extension.mkdir()
+        metadata.write_text('updated version')
+        with self.store.session() as s:
+            # Disable changes Shell state, not the installed directory.
+            self.assertEqual(s.snapshot()['files'][0]['id'], deleted['id'])
+            self.assertEqual(s.snapshot()['files'][0]['status'], 'deleted')
+
+    def test_uninstall_with_missing_root_does_not_recreate_it(self):
+        self.expire()
+        shutil.rmtree(self.store.root)
+        with self.store.session(uninstall=True) as s:
+            self.assertEqual(s.db.execute('SELECT COUNT(*) FROM files').fetchone()[0], 0)
+        self.assertFalse(self.store.root.exists())
 
     def test_replaced_or_symlinked_recovery_copy_cannot_be_restored(self):
         deleted = self.expire()

@@ -2,7 +2,7 @@
 
 ## Completed
 
-- **46 Python tests passed:** deletion/moving of the root or recovery folder,
+- **50 Python tests passed:** deletion/moving of the root or recovery folder,
   immediate availability checks, returned/replaced/symlinked recovery copies,
   all seven cleanup windows, changing existing timers,
   pause/resume, persistence, restoration, collision handling, recovery deadlines,
@@ -36,7 +36,9 @@
 
 The installer test simulates an upgrade from the old desktop app. It verifies
 that the old launcher and GUI sources are removed, the headless command works
-without PyGObject, and user files/history survive upgrade and uninstall.
+without PyGObject, and active files/settings survive uninstall while history resets.
+Folder-reset tests cover removal, replacement between checks, deliberately absent
+storage, reinstall, and preservation across upgrades and ordinary restarts.
 
 The opt-in native test is `dbus-run-session -- python3 tests/nautilus_smoke.py`.
 It uses a temporary HOME and refuses an existing GNOME desktop bus.
@@ -57,9 +59,8 @@ The systemd operations are mocked in installer tests. GitHub CI has not been run
   `gnome-extensions prefs transist@aaryabalan.local`.
 - Confirm Active Files, Recently Deleted, Settings, and Credits appear in one window.
 - With a disposable test installation, use a terminal to move/delete `_transist` and confirm a
-  storage-removal notification, an Open Trash warning, no stale Active Files entries,
-  and Unavailable recovery entries. Confirm the warning does not claim to prevent
-  filesystem deletion. Never use real files for destructive verification.
+  fresh, empty Active Files and history. Removing only recovery copies should
+  still show Unavailable entries without clearing unrelated history. Never use real files for destructive verification.
 - Enable direct saving after logout/login, take a GNOME screenshot, and confirm it
   appears immediately only in `_transist` and its notification opens that file.
   Turn the toggle off and confirm GNOME uses its normal folder. Test filename

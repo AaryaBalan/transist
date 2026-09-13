@@ -105,7 +105,7 @@ export default class TransistPreferences extends ExtensionPreferences {
         });
         this._deletionWarning.add_prefix(new Gtk.Image({ icon_name: 'security-high-symbolic' }));
         folderSafety.add(this._deletionWarning);
-        info.add(new Adw.ActionRow({ title: 'Stop the background service', subtitle: 'Run in Terminal: systemctl --user stop transist.service. Use install.py --uninstall to remove Transist while preserving your files.', use_markup: false }));
+        info.add(new Adw.ActionRow({ title: 'Stop the background service', subtitle: 'Run in Terminal: systemctl --user stop transist.service. Uninstall clears file history and tracked recovery copies; active files and Settings stay. Removing the whole _transist folder starts a fresh history next time.', use_markup: false }));
         this._service = new Adw.ActionRow({ title: 'Background cleanup', subtitle: 'Checking service…', use_markup: false });
         this._service.add_suffix(this._button('Refresh', () => this._refresh()));
         info.add(this._service);
@@ -270,7 +270,9 @@ export default class TransistPreferences extends ExtensionPreferences {
         this._pause.active = this._snapshot.settings.paused;
         this._lifetime.selected = lifetimeOptions.indexOf(this._snapshot.settings.lifetime_hours ?? 5);
         const duration = lifetimeLabel(this._snapshot.settings.lifetime_hours);
-        this._views.active.files.description = `Temporary files are removed after ${duration}; permanent files stay. Change the window in Settings. Use the eye icon to open a file.`;
+        this._views.active.files.description = this._snapshot.folder_removed
+            ? 'The folder was removed. Re-enable Transist to start a fresh collection.'
+            : `Temporary files are removed after ${duration}; permanent files stay. Change the window in Settings. Use the eye icon to open a file.`;
         this._views.history.files.description = `Recover within seven days of removal. Restoring starts a fresh ${duration} timer.`;
         this._sync = false;
     }

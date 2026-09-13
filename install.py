@@ -27,7 +27,7 @@ def main():
     parser.add_argument('--no-service', action='store_true', help='Install without starting cleanup')
     parser.add_argument('--no-extension', action='store_true', help='Install only the headless service and CLI')
     parser.add_argument('--no-file-manager-guard', action='store_true', help='Skip the GNOME Files folder-deletion companion')
-    parser.add_argument('--uninstall', action='store_true', help='Remove program; preserve all files, recovery data, and settings')
+    parser.add_argument('--uninstall', action='store_true', help='Remove program and reset file history; preserve active files and settings')
     args = parser.parse_args()
     if os.geteuid() == 0:
         parser.error('Run as your ordinary desktop user, without sudo.')
@@ -49,6 +49,9 @@ def main():
             subprocess.run(['systemctl', '--user', 'disable', '--now', 'transist.service'], check=False)
         if shutil.which('gnome-extensions'):
             subprocess.run(['gnome-extensions', 'disable', UUID], check=False)
+        from transist.core import Store
+        with Store().session(uninstall=True):
+            pass
         for path in (launcher, unit, desktop, icon, file_manager_guard, native_guard):
             path.unlink(missing_ok=True)
         for path in (app, extension):
@@ -56,7 +59,7 @@ def main():
                 shutil.rmtree(path)
         if shutil.which('systemctl'):
             subprocess.run(['systemctl', '--user', 'daemon-reload'], check=False)
-        print('Uninstalled. _transist, recovery copies, and the history database are preserved. Cleanup has stopped.')
+        print('Uninstalled. File history and tracked recovery copies are cleared. Active files and settings are preserved. Cleanup has stopped.')
         return
     if not args.no_service and not shutil.which('systemctl'):
         parser.error('systemd is required for automatic startup. Use --no-service and run transist daemon with your own supervisor.')
@@ -74,6 +77,11 @@ def main():
             output = Path(temp) / 'guard.so'
             subprocess.run([compiler, '-shared', '-fPIC', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', str(SOURCE / 'nautilus/guard_native.c'), '-o', str(output)], check=True)
             native_bytes = output.read_bytes()
+    # Observe an uninstall before copying the extension back during reinstall.
+    from transist.core import Store
+    if (data / 'transist/state.sqlite3').exists():
+        with Store().session(resume=True):
+            pass
     for path in (app, launcher.parent, unit.parent):
         path.mkdir(parents=True, exist_ok=True)
     shutil.copytree(SOURCE / 'transist', app / 'transist', dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))

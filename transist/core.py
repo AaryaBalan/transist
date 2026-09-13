@@ -38,46 +38,73 @@ class Store:
         self.clock = clock
 
     @contextlib.contextmanager
-    def session(self):
+    def session(self, *, uninstall=False, resume=False):
         datafd = private_directory(self.data)
         lockfd = os.open('lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600, dir_fd=datafd)
-        rootfd = vaultfd = None
-        db = None
+        rootfd = vaultfd = db = None
         try:
             fcntl.flock(lockfd, fcntl.LOCK_EX)
             known_store = (self.data / 'state.sqlite3').exists()
             root_existed = os.path.lexists(self.root)
-            if not root_existed and (self.data / 'folder-removal-requested').exists():
-                raise ValueError('The folder was removed after disabling Transist. Enable the extension again to recreate it and resume cleanup.')
-            rootfd = private_directory(self.root)
-            vault_created = False
-            try:
-                os.mkdir('.transist-recovery', 0o700, dir_fd=rootfd)
-                vault_created = True
-            except FileExistsError:
-                pass
-            vaultfd = os.open('.transist-recovery', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=rootfd)
-            vs = os.fstat(vaultfd)
-            if vs.st_uid != os.getuid() or vs.st_mode & 0o077:
-                raise ValueError('Recovery directory must be private (mode 0700).')
-            # Refuse symlinked databases before SQLite opens them.
             dbfd = os.open('state.sqlite3', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600, dir_fd=datafd)
             os.close(dbfd)
             db = sqlite3.connect(self.data / 'state.sqlite3', isolation_level=None)
             db.row_factory = sqlite3.Row
             db.execute('PRAGMA synchronous=FULL')
-            db.executescript('''
+            db.executescript("""
                 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS lifecycle (key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS files (
                   id TEXT PRIMARY KEY, name TEXT NOT NULL, dev INTEGER, ino INTEGER,
                   sig TEXT, stable REAL, added REAL, expires REAL, permanent INTEGER DEFAULT 0,
                   status TEXT, deleted REAL, purge_at REAL, destination TEXT);
                 CREATE TABLE IF NOT EXISTS shots (name TEXT PRIMARY KEY, sig TEXT, stable REAL, eligible INTEGER);
-            ''')
-            self.db, self.rootfd, self.vaultfd = db, rootfd, vaultfd
-            self.storage_recreated = known_store and (not root_existed or vault_created)
-            self.reconcile()
-            self.refresh_availability()
+            """)
+            self.db, self.rootfd, self.vaultfd = db, None, None
+            marker = self.data / 'folder-removal-requested'
+            previous = {r['key']: json.loads(r['value']) for r in db.execute('SELECT * FROM lifecycle')}
+            if not root_existed and ('root' not in previous or previous['root'] is not None):
+                # Persist the reset even when deliberate removal keeps storage absent.
+                self.reset_history()
+            if resume or uninstall:
+                marker.unlink(missing_ok=True)
+            elif not root_existed and marker.exists():
+                db.execute("INSERT OR REPLACE INTO lifecycle VALUES ('root', 'null')")
+                self.storage_recreated = False
+                yield self
+                return
+            vault_created = False
+            if root_existed or not uninstall:
+                rootfd = private_directory(self.root)
+                if not uninstall:
+                    try:
+                        os.mkdir('.transist-recovery', 0o700, dir_fd=rootfd)
+                        vault_created = True
+                    except FileExistsError:
+                        pass
+                try:
+                    vaultfd = os.open('.transist-recovery', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=rootfd)
+                except FileNotFoundError:
+                    if not uninstall:
+                        raise
+                if vaultfd is not None:
+                    vs = os.fstat(vaultfd)
+                    if vs.st_uid != os.getuid() or vs.st_mode & 0o077:
+                        raise ValueError('Recovery directory must be private (mode 0700).')
+            self.rootfd, self.vaultfd = rootfd, vaultfd
+            root_identity = self.directory_identity(self.root)
+            extension = self.home / '.local/share/gnome-shell/extensions/transist@aaryabalan.local'
+            extension_identity = self.directory_identity(extension)
+            root_changed = 'root' in previous and previous['root'] != root_identity
+            extension_removed = previous.get('extension') is not None and extension_identity is None
+            if uninstall or root_changed or extension_removed:
+                self.reset_history(purge_recovery=uninstall or extension_removed)
+            self.storage_recreated = known_store and vault_created and root_existed and not root_changed and not extension_removed
+            for key, value in (('root', root_identity), ('extension', None if uninstall else extension_identity)):
+                db.execute('INSERT OR REPLACE INTO lifecycle VALUES (?,?)', (key, json.dumps(value)))
+            if not uninstall:
+                self.reconcile()
+                self.refresh_availability()
             yield self
         finally:
             if db is not None:
@@ -85,6 +112,32 @@ class Store:
             for fd in (vaultfd, rootfd, lockfd, datafd):
                 if fd is not None:
                     os.close(fd)
+
+    @staticmethod
+    def directory_identity(path):
+        try:
+            info = path.stat(follow_symlinks=False)
+            return [info.st_dev, info.st_ino]
+        except FileNotFoundError:
+            return None
+
+    def reset_history(self, *, purge_recovery=False):
+        # Only remove known recovery copies, never active files or external Trash.
+        if purge_recovery and self.vaultfd is not None:
+            for row in self.db.execute('SELECT * FROM files').fetchall():
+                if self.matches(self.vaultfd, row['id'], row):
+                    os.unlink(row['id'], dir_fd=self.vaultfd)
+            os.fsync(self.vaultfd)
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            self.db.execute('DELETE FROM files')
+            self.db.execute('DELETE FROM shots')
+            if self.settings()['capture_screenshots']:
+                self.capture(baseline=True)
+            self.db.execute('COMMIT')
+        except Exception:
+            self.db.execute('ROLLBACK')
+            raise
 
     def settings(self):
         pictures = self.home / 'Pictures'
@@ -309,6 +362,8 @@ class Store:
             os.close(infd)
 
     def tick(self):
+        if self.rootfd is None:
+            return
         cfg = self.settings()
         if not cfg['paused'] and cfg['capture_screenshots']:
             self.capture()
@@ -343,6 +398,7 @@ class Store:
     def snapshot(self):
         self.refresh_availability()
         return {'folder': str(self.root), 'settings': self.settings(),
+                'folder_removed': self.rootfd is None,
                 'folder_guard_installed': all((self.data.parent / 'nautilus-python/extensions' / name).is_file() for name in ('transist_guard.py', 'transist_guard_native.so')),
                 'missing_recovery_count': self.missing_recovery_count(),
                 'files': [dict(r) for r in self.db.execute('SELECT * FROM files ORDER BY added DESC')],

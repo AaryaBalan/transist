@@ -158,7 +158,7 @@ Other screenshot programs can also be configured to save directly into `~/_trans
 | Pause                                       | No automatic screenshot moves, expiry, or purging; clocks still advance                                                     |
 | Resume                                      | Overdue files are processed; pause does not extend recovery eligibility                                                     |
 | Reboot / suspend / logout                   | Persisted deadlines survive; overdue work resumes when the service runs again                                               |
-| Delete or move `_transist` outside Transist | Missing active files leave Active Files; missing recovery copies are labelled Unavailable with Restore disabled             |
+| Delete or move `_transist` outside Transist | File tracking and history reset; the next collection starts fresh             |
 
 The service polls every **10 seconds**. Timing starts from first observation, not the file's old creation/modification timestamp. An unobserved file placed while the service is stopped receives its timer when the service next discovers it. Recently changing files wait until unchanged for **30 seconds** before expiry. A powered-off computer cannot clean files; a normal user service is not guaranteed to run after the last login session ends.
 
@@ -182,7 +182,8 @@ This protection is specific to GNOME Files. It does not prevent terminal command
 other apps, or renaming/moving the folder. It does not change permissions or lock
 other folders. For removal outside Files, stop the service yourself first with
 `systemctl --user stop transist.service`. Uninstall also stops cleanup and leaves
-your files intact; restart Files after uninstall to unload the companion.
+active files intact; tracked recovery copies and history are cleared. Restart Files
+after uninstall to unload the companion.
 
 Technical scope: Files has no public deletion-veto provider. The companion wraps
 the in-process GFile delete/trash methods using offsets from the installed GIO
@@ -191,16 +192,17 @@ extension-state signals update its restriction. The companion adjusts only dialo
 It has been tested with Nautilus 50; retest after Nautilus/GLib/libadwaita upgrades.
 It is not a filesystem security boundary.
 
-The service also detects missing storage and reports unavailable recovery copies,
-including deletions performed outside Files. Its post-deletion notification cannot
-recover removed contents.
+Removing the whole `_transist` folder resets file tracking and history. The next
+collection starts fresh, with no old recovery entries or Unavailable labels.
+Settings are preserved. If the folder was removed while Transist was disabled,
+it remains absent until you re-enable Transist; preferences show an empty collection.
+Files moved to system Trash remain there; Transist does not erase them.
 
-If you already deleted the folder, use **Open Trash** in the warning on Active Files
-or Recently Deleted. Missing/replaced recovery copies show **Unavailable**, with
-Restore disabled. If the original recovery copies are returned to their expected
-paths, Transist recognises them again without extending their seven-day deadline.
-It does not search, move, or empty your Trash automatically. Permanently removed
-contents cannot be recreated from history.
+Only removing the whole folder or completely uninstalling the extension triggers
+this reset. Disabling/re-enabling, restarting, and upgrading preserve history.
+Deleting individual files or only `.transist-recovery` does not reset the collection;
+missing recovery copies still show Unavailable in that case. Returning an individual
+original recovery copy restores its availability within its existing deadline.
 
 ### Scope and file handling
 
@@ -253,7 +255,12 @@ From the extracted source folder:
 python3 install.py --uninstall
 ```
 
-Uninstall stops cleanup and removes program files, launcher, and extension. It **preserves your active files, recovery copies, and database**. Reinstalling reconnects to those deadlines, so overdue files may then be processed. To upgrade, run the new version's installer; it replaces program files while preserving data.
+Uninstall stops cleanup and removes program files, launcher, and extension. It
+**clears file history and tracked recovery copies**, while preserving active files
+and Settings. Reinstalling starts fresh: remaining active files get new timers.
+Removing the extension through GNOME is detected on the next backend check and
+also clears its tracked history/recovery copies. To upgrade, run the installer
+without uninstalling first; upgrades preserve files, history, and existing timers.
 
 ## Development and verification
 

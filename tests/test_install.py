@@ -5,10 +5,12 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
 import install
+from transist.core import Store
 
 
 class InstallerTests(unittest.TestCase):
@@ -50,10 +52,29 @@ class InstallerTests(unittest.TestCase):
                 guard = home / '.local/share/nautilus-python/extensions/transist_guard.py'
                 self.assertTrue(guard.is_file())
                 self.assertTrue(guard.with_name('transist_guard_native.so').is_file())
+                # Uninstall clears real tracked recovery bytes, but keeps active files.
+                (home / '_transist/past.txt').write_text('old recovery')
+                clock = [1_800_000_000]
+                store = Store(home=home, data=home / '.local/share/transist', clock=lambda: clock[0])
+                with store.session() as state:
+                    state.tick()
+                    permanent = next(r for r in state.snapshot()['files'] if r['name'] == 'keep.txt')
+                    state.action(permanent['id'], 'pin')
+                clock[0] += 48 * 3600
+                with store.session() as state:
+                    state.tick()
+                    recovery = next(r for r in state.snapshot()['files'] if r['name'] == 'past.txt')
+                recovery_path = home / '_transist/.transist-recovery' / recovery['id']
+                self.assertTrue(recovery_path.is_file())
                 with patch.dict(os.environ, env), patch.object(Path, 'home', return_value=home), patch('os.geteuid', return_value=1000), patch.object(sys, 'argv', ['install.py', '--uninstall']), patch('subprocess.run') as run, contextlib.redirect_stdout(io.StringIO()):
                     install.main()
                 self.assertEqual(keep.read_text(), 'keep me')
-                self.assertTrue((home / '.local/share/transist/state.sqlite3').is_file())
+                self.assertFalse(recovery_path.exists())
+                database = home / '.local/share/transist/state.sqlite3'
+                self.assertTrue(database.is_file())
+                with sqlite3.connect(database) as db:
+                    self.assertEqual(db.execute('SELECT COUNT(*) FROM files').fetchone()[0], 0)
+                    self.assertEqual(json.loads(db.execute("SELECT value FROM settings WHERE key='lifetime_hours'").fetchone()[0]), 48)
                 self.assertFalse(launcher.exists())
                 self.assertFalse(unit.exists())
                 self.assertFalse(guard.exists())
