@@ -1,4 +1,9 @@
-# Transist
+<p align="center">
+  <img src="assets/transist.svg" alt="Transist logo" width="120">
+</p>
+
+<div align="center">
+<h1>Transist</h1>
 
 **A simple GNOME extension for files you only need temporarily.**
 
@@ -6,6 +11,8 @@ Transist gives you a private `~/_transist` folder. Put temporary files there,
 choose how long they should stay, and let Transist clean them up automatically.
 Deleted files are kept in Transist recovery storage for seven days, so you can
 restore them when needed.
+
+</div>
 
 ## Screenshots
 
@@ -186,6 +193,23 @@ python3 install.py --uninstall
 Uninstalling stops the service and removes Transist's installed program files.
 It keeps your active files, but removes Transist's recovery tracking and
 history. Restart GNOME Files after uninstalling.
+
+## Complete Workflow
+
+```mermaid
+flowchart TD
+  A[Place a file in _transist] --> B[Choose cleanup time]
+  B --> C[Timer starts]
+  C --> D{Keep permanently?}
+  D -->|Yes| E[File stays in _transist]
+  D -->|No| F[Timer ends]
+  F --> G[Move to Recently Deleted]
+  G --> H{Restore within 7 days?}
+  H -->|Yes| I[Restore to _transist]
+  I --> C
+  H -->|No| J[Recovery copy is permanently removed]
+  E --> K[User removes file manually]
+```
 
 ## License
 
