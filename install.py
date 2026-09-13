@@ -47,6 +47,8 @@ def main():
         return
     if not args.no_service and not shutil.which('systemctl'):
         parser.error('systemd is required for automatic startup. Use --no-service and run transist daemon with your own supervisor.')
+    if not args.no_extension and not shutil.which('glib-compile-schemas'):
+        parser.error('glib-compile-schemas is required to install the GNOME extension settings.')
     for path in (app, launcher.parent, unit.parent):
         path.mkdir(parents=True, exist_ok=True)
     shutil.copytree(SOURCE / 'transist', app / 'transist', dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
@@ -64,6 +66,7 @@ def main():
         obsolete.unlink(missing_ok=True)
     if not args.no_extension:
         shutil.copytree(SOURCE / 'extension', extension, dirs_exist_ok=True)
+        subprocess.run(['glib-compile-schemas', '--strict', str(extension / 'schemas')], check=True)
     # Initialize only after dependencies are checked.
     sys.path.insert(0, str(app))
     from transist.core import Store

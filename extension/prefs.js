@@ -17,8 +17,9 @@ export default class TransistPreferences extends ExtensionPreferences {
         this._queue = [];
         this._views = {};
         this._snapshot = null;
+        this._settings = this.getSettings('org.gnome.shell.extensions.transist');
         this._backend = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'transist']);
-        window.set_default_size(820, 720);
+        window.set_default_size(960, 720);
         window.set_search_enabled(true);
         for (const [name, title, icon] of [['active', 'Active Files', 'folder-symbolic'], ['history', 'Recently Deleted', 'document-open-recent-symbolic']]) {
             const page = new Adw.PreferencesPage({ name, title, icon_name: icon });
@@ -44,16 +45,14 @@ export default class TransistPreferences extends ExtensionPreferences {
         const settings = new Adw.PreferencesPage({ name: 'settings', title: 'Settings', icon_name: 'emblem-system-symbolic' });
         const guide = new Adw.PreferencesGroup({ title: 'How Transist works', description: 'A temporary home for files you only need for a while.' });
         for (const [title, subtitle] of [
-            ['1. Add files', 'Place files directly in ~/_transist, or enable screenshot capture below. Each file’s timer starts when Transist first detects it.'],
+            ['1. Add files', 'Place files directly in ~/_transist, or enable screenshot saving above. Each file’s timer starts when Transist first detects it.'],
             ['2. Choose a cleanup window', 'Temporary files leave _transist when their timers run out. Keep Permanently exempts a file from automatic cleanup.'],
             ['3. Recover within seven days', 'Expired files move to Recently Deleted. Recovery copies still use disk space and are permanently deleted seven days later. Restore starts a fresh timer using your selected window.'],
         ])
             guide.add(new Adw.ActionRow({ title, subtitle, use_markup: false }));
-        settings.add(guide);
         const appearance = new Adw.PreferencesGroup({ title: 'Appearance' });
         appearance.add(new Adw.ActionRow({ title: 'Follow GNOME', subtitle: 'Native preferences styling and the system light/dark preference. No custom color theme.', use_markup: false }));
-        settings.add(appearance);
-        this._controls = new Adw.PreferencesGroup({ title: 'Screenshot capture & cleanup', sensitive: false });
+        this._controls = new Adw.PreferencesGroup({ title: 'Cleanup and folder imports', sensitive: false });
         this._lifetime = new Adw.ComboRow({
             title: 'Automatically remove files after',
             subtitle: 'Applies to new and existing temporary files, measured from each timer’s start. A shorter window can make files due for cleanup immediately.',
@@ -66,17 +65,33 @@ export default class TransistPreferences extends ExtensionPreferences {
                 this._refresh(['config', 'lifetime_hours', String(lifetimeOptions[this._lifetime.selected])]);
         });
         this._controls.add(this._lifetime);
-        const captureRow = new Adw.ActionRow({ title: 'Store screenshots in _transist', subtitle: 'Move new images from the source folder after 30 seconds.', use_markup: false });
+        const directGroup = new Adw.PreferencesGroup({ title: 'Screenshot destination' });
+        const directRow = new Adw.ActionRow({ title: 'Store screenshots directly in _transist', use_markup: false });
+        const directSwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER });
+        directRow.add_suffix(directSwitch);
+        directRow.set_activatable_widget(directSwitch);
+        this._settings.bind('direct-screenshots', directSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
+        const syncDirectStatus = () => {
+            directRow.subtitle = this._settings.get_boolean('direct-screenshots-ready')
+                ? 'Save new screenshots from GNOME’s screenshot tool here immediately. Turn off to use GNOME’s normal folder. Requires the extension to stay enabled.'
+                : 'Log out and back in once to load direct saving, and keep Transist enabled. This applies to GNOME’s screenshot tool; other apps use their own save settings.';
+        };
+        syncDirectStatus();
+        const directSignal = this._settings.connect('changed::direct-screenshots-ready', syncDirectStatus);
+        directGroup.add(directRow);
+        settings.add(directGroup);
+        const captureRow = new Adw.ActionRow({ title: 'Import screenshots from another folder', subtitle: 'For other screenshot apps: move newly detected images after 30 seconds without changes. Existing images stay where they are.', use_markup: false });
         this._capture = this._switch(captureRow, 'capture_screenshots');
         this._controls.add(captureRow);
         this._folder = new Adw.EntryRow({ title: 'Screenshot source folder', show_apply_button: true });
         this._folder.connect('apply', () => this._refresh(['config', 'screenshot_folder', this._folder.text]));
         this._controls.add(this._folder);
-        const pauseRow = new Adw.ActionRow({ title: 'Pause automatic cleanup', subtitle: 'Stops screenshot moves, expiry, and purging. Timers keep advancing while paused.', use_markup: false });
+        const pauseRow = new Adw.ActionRow({ title: 'Pause automatic cleanup', subtitle: 'Stops folder imports, expiry, and purging. Timers keep advancing. Direct screenshot saving stays enabled.', use_markup: false });
         this._pause = this._switch(pauseRow, 'paused');
         this._controls.add(pauseRow);
         settings.add(this._controls);
-        const info = new Adw.PreferencesGroup({ title: 'Storage & service' });
+        settings.add(guide);
+        const info = new Adw.PreferencesGroup({ title: 'Storage and service' });
         this._service = new Adw.ActionRow({ title: 'Background cleanup', subtitle: 'Checking service…', use_markup: false });
         this._service.add_suffix(this._button('Refresh', () => this._refresh()));
         info.add(this._service);
@@ -87,9 +102,27 @@ export default class TransistPreferences extends ExtensionPreferences {
         ])
             info.add(new Adw.ActionRow({ title, subtitle, use_markup: false }));
         settings.add(info);
+        settings.add(appearance);
         window.add(settings);
+        const credits = new Adw.PreferencesPage({ name: 'credits', title: 'Credits', icon_name: 'help-about-symbolic' });
+        const creator = new Adw.PreferencesGroup({ title: 'Transist', description: 'Files for now. Space for what comes next.' });
+        creator.add(new Adw.ActionRow({ title: 'Made by Aarya B', subtitle: 'Creator and maintainer', use_markup: false }));
+        credits.add(creator);
+        const links = new Adw.PreferencesGroup({ title: 'Find and support the project' });
+        for (const [title, subtitle, label, uri] of [
+            ['GitHub', 'AaryaBalan', 'Open Profile', 'https://github.com/AaryaBalan'],
+            ['Source code', 'AaryaBalan / transist', 'Open Repository', 'https://github.com/AaryaBalan/transist'],
+            ['Star this repo', 'Enjoy using Transist? Give it a star on GitHub.', '★ Star this repo', 'https://github.com/AaryaBalan/transist'],
+        ]) {
+            const row = new Adw.ActionRow({ title, subtitle, use_markup: false });
+            row.add_suffix(this._button(label, () => this._openUri(uri)));
+            links.add(row);
+        }
+        credits.add(links);
+        window.add(credits);
         window.connect('close-request', () => {
             this._closed = true;
+            this._settings.disconnect(directSignal);
             if (this._timer) {
                 GLib.Source.remove(this._timer);
                 this._timer = 0;
@@ -131,7 +164,10 @@ export default class TransistPreferences extends ExtensionPreferences {
     }
 
     _openPath(path) {
-        const uri = Gio.File.new_for_path(path).get_uri();
+        this._openUri(Gio.File.new_for_path(path).get_uri());
+    }
+
+    _openUri(uri) {
         Gio.AppInfo.launch_default_for_uri_async(uri, null, null, (_source, result) => {
             try {
                 Gio.AppInfo.launch_default_for_uri_finish(result);
@@ -235,6 +271,10 @@ export default class TransistPreferences extends ExtensionPreferences {
         for (const child of view.children)
             view.files.remove(child);
         view.children = [];
+        // One shared width per column, even when action labels differ.
+        const actionWidths = new Gtk.SizeGroup({ mode: Gtk.SizeGroupMode.HORIZONTAL });
+        const eyeWidths = new Gtk.SizeGroup({ mode: Gtk.SizeGroupMode.HORIZONTAL });
+        view.columnWidths = [actionWidths, eyeWidths];
         const add = child => {
             view.files.add(child);
             view.children.push(child);
@@ -251,10 +291,12 @@ export default class TransistPreferences extends ExtensionPreferences {
                 const viewFile = new Gtk.Button({ icon_name: 'view-reveal-symbolic', valign: Gtk.Align.CENTER, tooltip_text: `Open ${item.name}` });
                 viewFile.update_property([Gtk.AccessibleProperty.LABEL], [`Open ${item.name}`]);
                 viewFile.connect('clicked', () => this._openFile(item.name));
+                eyeWidths.add_widget(viewFile);
                 row.add_suffix(viewFile);
             }
             const action = this._button(item.label, () => this._refresh(['action', item.action, item.id]));
             action.sensitive = item.enabled;
+            actionWidths.add_widget(action);
             row.add_suffix(action);
             add(row);
         }

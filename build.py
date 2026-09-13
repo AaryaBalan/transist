@@ -2,6 +2,7 @@
 """Create reproducible source and extension archives using the standard library."""
 from pathlib import Path
 import zipfile
+import subprocess
 
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / 'dist'
@@ -18,6 +19,7 @@ def archive(destination, files):
 
 
 def main():
+    subprocess.run(['glib-compile-schemas', '--strict', str(ROOT / 'extension/schemas')], check=True)
     DIST.mkdir(exist_ok=True)
     sources = []
     for path in ROOT.rglob('*'):

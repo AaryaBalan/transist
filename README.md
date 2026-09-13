@@ -17,6 +17,8 @@ The preferences window contains:
 - **Active Files:** search filenames, view countdowns, open individual files with the eye icon, keep permanently, or make temporary.
 - **Recently Deleted:** search history and restore eligible files.
 - **Settings:** how cleanup works, cleanup window, screenshot capture, screenshot folder, pause, and service status.
+- **Credits:** Aarya B, [GitHub profile](https://github.com/AaryaBalan),
+  [source repository](https://github.com/AaryaBalan/transist), and a link to star the repo.
 
 The interface uses GTK 4 / libadwaita directly inside `prefs.js`, following GNOME's
 native system light/dark appearance. It does not force a custom palette or inject
@@ -75,8 +77,10 @@ yourself; no alternate autostart integration is installed.
    or select **Keep Permanently** or **Make Temporary**.
 5. In **Recently Deleted**, select **Restore** during the recovery window. Its label
    shows the duration of the fresh timer.
-6. In **Settings**, enable screenshot capture and edit its source folder. Click
-   the entry's apply/check button to save the folder.
+6. In **Settings**, enable **Store screenshots directly in _transist** for GNOME's
+   built-in screenshot tool. After upgrading, log out/in once to load the new Shell hook.
+   For other screenshot apps, use **Import screenshots from another folder** or
+   configure that app to save into `_transist` itself.
 7. Use each page's filename search; lists load 100 entries at a time with **Show more**.
 
 Missing backend and operation failures appear in preferences, rather than silently
@@ -86,9 +90,23 @@ operations may finish safely in the background.
 
 ### Screenshot behavior
 
-By default the source is the XDG Pictures folder's `Screenshots` subfolder, usually `~/Pictures/Screenshots`. If your screenshot tool uses another folder, enter its dedicated screenshot directory in Settings and click **Save folder**. New PNG, JPEG, WebP, AVIF, BMP, and TIFF files in that folder are eligible.
+**Direct saving:** turn on **Store screenshots directly in _transist**. GNOME's
+built-in screenshot tool writes new screenshots directly into `~/_transist`, with
+no import delay or extra copy in Pictures. GNOME handles filename collisions,
+clipboard contents, and notifications with the actual saved path. Existing images
+stay where they are. Turning it off or disabling the extension restores GNOME's
+normal save location. Direct saving continues while automatic cleanup is paused.
+This option defaults to off and does not change other apps' save settings or screen
+recording destinations. Preferences shows a logout/login message until the updated
+Shell hook has loaded. The service discovers directly saved files on its next
+10-second cycle, so the Active Files list may take a moment to show them.
 
-Transist **moves newly detected images after they have been unchanged for 30 seconds**. It does not patch GNOME's screenshot internals or change other apps' save settings. The original screenshot notification may still point to its old path after the move; use Transist to open the folder. Existing images at the time capture is enabled are left alone. Turning capture off and on establishes a new baseline. Any new image in the selected source directory is treated as a screenshot, so use a dedicated folder.
+**Folder import for other apps:** enable **Import screenshots from another folder**
+and set its source directory. New PNG, JPEG, WebP, AVIF, BMP, and TIFF files are moved
+after 30 seconds without changes. Existing images are left alone. Turning import
+off and on establishes a new baseline. Use a dedicated screenshot folder, since
+every new image there is eligible. Notifications from those apps may still point
+to the old path after importing.
 
 Other screenshot programs can also be configured to save directly into `~/_transist`; those files receive timers without the capture setting. Screen recordings and documents placed directly into `_transist` work like all other regular files. The capture setting does not watch the Videos folder.
 
@@ -121,7 +139,7 @@ The service polls every **10 seconds**. Timing starts from first observation, no
 - Screenshot imports copy to private staging, flush the copy, publish without overwriting, and only remove the original if its observed identity/content metadata still match. Interrupted imports can leave a staging copy; these `capture-*` files are intentionally retained, not automatically purged.
 - SQLite or filesystem failures are logged, and the daemon retries on its next cycle. Check service logs if cleanup stops progressing. A failing file can delay later operations in that cycle.
 - The quiet-period check is not a lock against a program resuming writes later. Pause cleanup while using this folder for long-running recordings or ongoing work. Permanent files remain ordinary editable files.
-- Disabling the GNOME extension removes the top-bar UI only. To stop cleanup, use Settings → Pause, or stop the service.
+- Disabling the GNOME extension removes the top-bar UI and restores GNOME's normal screenshot destination. Background cleanup and folder imports keep running. To stop cleanup, use Settings → Pause, or stop the service.
 
 ## Service and command line
 
@@ -170,7 +188,7 @@ python3 -m unittest discover -s tests -v
 python3 -m compileall -q transist install.py
 node --input-type=module --check < extension/extension.js
 node --input-type=module --check < extension/prefs.js
-node --test tests/preferences.test.mjs
+node --test tests/*.test.mjs
 python3 build.py
 ```
 

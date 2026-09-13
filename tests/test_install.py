@@ -46,6 +46,7 @@ class InstallerTests(unittest.TestCase):
                 unit = home / '.config/systemd/user/transist.service'
                 self.assertIn('ExecStart="' + str(launcher) + '" daemon', unit.read_text())
                 self.assertTrue((home / '.local/share/gnome-shell/extensions' / install.UUID / 'extension.js').is_file())
+                self.assertTrue((home / '.local/share/gnome-shell/extensions' / install.UUID / 'schemas/gschemas.compiled').is_file())
                 with patch.dict(os.environ, env), patch.object(Path, 'home', return_value=home), patch('os.geteuid', return_value=1000), patch.object(sys, 'argv', ['install.py', '--uninstall']), patch('subprocess.run') as run, contextlib.redirect_stdout(io.StringIO()):
                     install.main()
                 self.assertEqual(keep.read_text(), 'keep me')
