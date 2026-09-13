@@ -1,24 +1,51 @@
-# Transist — GNOME Extension
+# Transist
 
-**Files, recovery history, and settings in one native preferences window.**
+**A native GNOME extension for files you only need for a while.**
 
-Drop any regular file directly into `~/_transist`. Choose a cleanup window of
-**1, 5, 12, 24, 48, or 72 hours, or 1 week** in Settings (default: five hours).
-Expired files remain recoverable for seven days. Restore starts a fresh timer
-using your selected window; permanent files do not expire.
+Transist gives you a private `~/_transist` folder. Files placed there are
+automatically cleaned up after a configurable period, while deleted files remain
+recoverable for seven days. You can keep important files permanently, restore a
+file with a fresh timer, or pause automatic cleanup whenever you need to work in
+the folder for longer.
 
-## Native preferences update
+Transist consists of two parts:
 
-There is **no separate Transist desktop app**. Open GNOME Extensions → Transist →
-Settings, or choose **Files, History & Settings** from the top-bar menu.
+- A GNOME Shell extension with native GTK 4 / libadwaita preferences.
+- A headless Python service that watches the folder even when the preferences window is closed.
 
-The preferences window contains:
+There is **no separate Transist desktop app**. Open **GNOME Extensions → Transist →
+Settings**, or choose **Files, History & Settings** from the top-bar menu.
 
-- **Active Files:** search filenames, view countdowns, open individual files with the eye icon, keep permanently, or make temporary.
-- **Recently Deleted:** search history and restore eligible files.
-- **Settings:** how cleanup works, cleanup window, screenshot capture, screenshot folder, pause, and service status.
-- **Credits:** Aarya B, [GitHub profile](https://github.com/AaryaBalan),
-  [source repository](https://github.com/AaryaBalan/transist), and a link to star the repo.
+## Screenshots
+
+### Active files
+
+Search files, see their remaining lifetime, open them, or switch them between
+temporary and permanent storage.
+
+![Transist Active Files](assets/transist-active.png)
+
+### Settings
+
+Choose the cleanup window, configure screenshot handling, pause the service, and
+review folder-safety information.
+
+![Transist Settings](assets/transist-settings.png)
+
+## Features
+
+- Cleanup windows of **1, 5, 12, 24, 48, or 72 hours, or 1 week**.
+- Seven-day recovery history for expired files.
+- Searchable **Active Files** and **Recently Deleted** pages.
+- Permanent-file pinning and collision-safe restore.
+- Optional direct GNOME screenshot saving into `~/_transist`.
+- Optional import of screenshots from a dedicated folder.
+- GNOME Files protection against accidentally deleting the root `_transist` folder.
+- Command-line and systemd controls for headless or server-like use.
+
+The preferences window contains **Active Files**, **Recently Deleted**, **Settings**,
+and **Credits**. It follows GNOME's system light/dark appearance and does not
+install a separate application window.
 
 The interface uses GTK 4 / libadwaita directly inside `prefs.js`, following GNOME's
 native system light/dark appearance. It does not force a custom palette or inject
@@ -83,7 +110,7 @@ yourself; no alternate autostart integration is installed.
    or select **Keep Permanently** or **Make Temporary**.
 5. In **Recently Deleted**, select **Restore** during the recovery window. Its label
    shows the duration of the fresh timer.
-6. In **Settings**, enable **Store screenshots directly in _transist** for GNOME's
+6. In **Settings**, enable **Store screenshots directly in \_transist** for GNOME's
    built-in screenshot tool. After upgrading, log out/in once to load the new Shell hook.
    For other screenshot apps, use **Import screenshots from another folder** or
    configure that app to save into `_transist` itself.
@@ -96,7 +123,7 @@ operations may finish safely in the background.
 
 ### Screenshot behavior
 
-**Direct saving:** turn on **Store screenshots directly in _transist**. GNOME's
+**Direct saving:** turn on **Store screenshots directly in \_transist**. GNOME's
 built-in screenshot tool writes new screenshots directly into `~/_transist`, with
 no import delay or extra copy in Pictures. GNOME handles filename collisions,
 clipboard contents, and notifications with the actual saved path. Existing images
@@ -118,20 +145,20 @@ Other screenshot programs can also be configured to save directly into `~/_trans
 
 ### Exact lifetime rules
 
-| Event | Result |
-| --- | --- |
-| File first detected directly in `_transist` | Timer starts using the selected cleanup window |
-| Selected deadline reached | Moves to hidden private recovery storage on the next cleanup cycle |
-| Change cleanup window | Existing temporary deadlines are recalculated from their timer starts; permanent files and recovery deadlines are unchanged |
-| Restore within seven days of that move | Returns to `_transist` with a fresh timer using the current window |
-| Same name already exists on restore | Restored file gets a unique suffix; existing item remains untouched |
-| Keep permanently | File stays in place with no expiry |
-| Make temporary | New timer starts using the current window |
-| Seven days after the move to recovery | Recovery copy is permanently unlinked on the next cycle; filename/timestamps remain in history |
-| Pause | No automatic screenshot moves, expiry, or purging; clocks still advance |
-| Resume | Overdue files are processed; pause does not extend recovery eligibility |
-| Reboot / suspend / logout | Persisted deadlines survive; overdue work resumes when the service runs again |
-| Delete or move `_transist` outside Transist | Missing active files leave Active Files; missing recovery copies are labelled Unavailable with Restore disabled |
+| Event                                       | Result                                                                                                                      |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| File first detected directly in `_transist` | Timer starts using the selected cleanup window                                                                              |
+| Selected deadline reached                   | Moves to hidden private recovery storage on the next cleanup cycle                                                          |
+| Change cleanup window                       | Existing temporary deadlines are recalculated from their timer starts; permanent files and recovery deadlines are unchanged |
+| Restore within seven days of that move      | Returns to `_transist` with a fresh timer using the current window                                                          |
+| Same name already exists on restore         | Restored file gets a unique suffix; existing item remains untouched                                                         |
+| Keep permanently                            | File stays in place with no expiry                                                                                          |
+| Make temporary                              | New timer starts using the current window                                                                                   |
+| Seven days after the move to recovery       | Recovery copy is permanently unlinked on the next cycle; filename/timestamps remain in history                              |
+| Pause                                       | No automatic screenshot moves, expiry, or purging; clocks still advance                                                     |
+| Resume                                      | Overdue files are processed; pause does not extend recovery eligibility                                                     |
+| Reboot / suspend / logout                   | Persisted deadlines survive; overdue work resumes when the service runs again                                               |
+| Delete or move `_transist` outside Transist | Missing active files leave Active Files; missing recovery copies are labelled Unavailable with Restore disabled             |
 
 The service polls every **10 seconds**. Timing starts from first observation, not the file's old creation/modification timestamp. An unobserved file placed while the service is stopped receives its timer when the service next discovers it. Recently changing files wait until unchanged for **30 seconds** before expiry. A powered-off computer cannot clean files; a normal user service is not guaranteed to run after the last login session ends.
 
@@ -143,7 +170,7 @@ History is stored separately; a filename in history is not a backup.
 
 With the companion installed and Files restarted, **GNOME Files blocks Trash and
 permanent deletion of exactly `~/_transist` while Transist is enabled**. The popup
-says “Deleting _transist is restricted” and “Disable the Transist extension first.”
+says “Deleting \_transist is restricted” and “Disable the Transist extension first.”
 It offers only Close. Files inside it and unrelated folders remain deletable.
 
 Disable Transist in GNOME Extensions to allow removing the folder. When Files
