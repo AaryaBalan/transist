@@ -45,9 +45,15 @@ class Store:
         db = None
         try:
             fcntl.flock(lockfd, fcntl.LOCK_EX)
+            known_store = (self.data / 'state.sqlite3').exists()
+            root_existed = os.path.lexists(self.root)
+            if not root_existed and (self.data / 'folder-removal-requested').exists():
+                raise ValueError('The folder was removed after disabling Transist. Enable the extension again to recreate it and resume cleanup.')
             rootfd = private_directory(self.root)
+            vault_created = False
             try:
                 os.mkdir('.transist-recovery', 0o700, dir_fd=rootfd)
+                vault_created = True
             except FileExistsError:
                 pass
             vaultfd = os.open('.transist-recovery', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=rootfd)
@@ -69,7 +75,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS shots (name TEXT PRIMARY KEY, sig TEXT, stable REAL, eligible INTEGER);
             ''')
             self.db, self.rootfd, self.vaultfd = db, rootfd, vaultfd
+            self.storage_recreated = known_store and (not root_existed or vault_created)
             self.reconcile()
+            self.refresh_availability()
             yield self
         finally:
             if db is not None:
@@ -141,6 +149,21 @@ class Store:
         s = self.info(fd, name)
         return s is not None and (s.st_dev, s.st_ino) == (row['dev'], row['ino'])
 
+    def refresh_availability(self):
+        """History is not proof that the corresponding bytes still exist."""
+        rows = self.db.execute("SELECT * FROM files WHERE status IN ('active','deleted','recovery_missing')").fetchall()
+        for r in rows:
+            if r['status'] == 'active':
+                if not self.matches(self.rootfd, r['name'], r):
+                    self.db.execute("UPDATE files SET status='missing' WHERE id=?", (r['id'],))
+            else:
+                status = 'deleted' if self.matches(self.vaultfd, r['id'], r) else 'recovery_missing'
+                if status != r['status']:
+                    self.db.execute('UPDATE files SET status=? WHERE id=?', (status, r['id']))
+
+    def missing_recovery_count(self):
+        return self.db.execute("SELECT COUNT(*) FROM files WHERE status='recovery_missing'").fetchone()[0]
+
     def reconcile(self):
         # Write intent before moving; after interruption either name is sufficient.
         for r in self.db.execute("SELECT * FROM files WHERE status IN ('expiring','restoring')").fetchall():
@@ -167,6 +190,8 @@ class Store:
     def move(self, r, restoring=False):
         now = self.clock()
         if restoring:
+            if r['status'] == 'recovery_missing':
+                raise ValueError('Recovery copy is unavailable. If you deleted or moved _transist, check system Trash. History alone cannot restore a file.')
             if r['status'] != 'deleted' or now >= r['purge_at']:
                 raise ValueError('The recovery window has ended or this file is no longer recoverable.')
             if not self.matches(self.vaultfd, r['id'], r):
@@ -302,6 +327,7 @@ class Store:
                 self.db.execute("UPDATE files SET status='purged' WHERE id=?", (r['id'],))
 
     def action(self, file_id, action):
+        self.refresh_availability()
         r = self.db.execute('SELECT * FROM files WHERE id=?', (file_id,)).fetchone()
         if r is None:
             raise ValueError('File not found')
@@ -315,6 +341,9 @@ class Store:
             raise ValueError('Unknown action')
 
     def snapshot(self):
+        self.refresh_availability()
         return {'folder': str(self.root), 'settings': self.settings(),
+                'folder_guard_installed': all((self.data.parent / 'nautilus-python/extensions' / name).is_file() for name in ('transist_guard.py', 'transist_guard_native.so')),
+                'missing_recovery_count': self.missing_recovery_count(),
                 'files': [dict(r) for r in self.db.execute('SELECT * FROM files ORDER BY added DESC')],
                 'now': self.clock()}

@@ -12,6 +12,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 export default class Transist extends Extension {
     enable() {
+        this._resumeAfterFolderRemoval();
         this._settings = this.getSettings('org.gnome.shell.extensions.transist');
         this._injections = new InjectionManager();
         const pictures = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_PICTURES) || GLib.get_home_dir();
@@ -53,6 +54,25 @@ export default class Transist extends Extension {
                     Main.notify('Transist', error.message);
             }
         });
+    }
+
+    _resumeAfterFolderRemoval() {
+        const marker = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_data_dir(), 'transist', 'folder-removal-requested']));
+        if (!marker.query_exists(null))
+            return;
+        try {
+            marker.delete(null);
+            const process = Gio.Subprocess.new(['systemctl', '--user', 'start', 'transist.service'], Gio.SubprocessFlags.NONE);
+            process.wait_check_async(null, (source, result) => {
+                try {
+                    source.wait_check_finish(result);
+                } catch (error) {
+                    Main.notify('Transist', `Could not restart cleanup: ${error.message}`);
+                }
+            });
+        } catch (error) {
+            Main.notify('Transist', error.message);
+        }
     }
 
     disable() {

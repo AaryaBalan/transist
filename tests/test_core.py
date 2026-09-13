@@ -1,4 +1,5 @@
 import os
+import shutil
 from pathlib import Path
 import tempfile
 import unittest
@@ -135,6 +136,89 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(restored['expires'], self.now + TTL)
         self.assertEqual(restored['status'], 'active')
         self.assertEqual((self.store.root / 'note.txt').read_bytes(), b'valuable data')
+
+    def test_deleted_root_reconciles_active_and_recovery_without_restore_offer(self):
+        deleted = self.expire()
+        self.write('active.txt')
+        self.tick()
+        shutil.rmtree(self.store.root)
+        with self.store.session() as s:
+            snapshot = s.snapshot()
+            self.assertTrue(s.storage_recreated)
+            self.assertEqual(snapshot['missing_recovery_count'], 1)
+            rows = {r['name']: r for r in snapshot['files']}
+            self.assertEqual(rows['active.txt']['status'], 'missing')
+            self.assertEqual(rows['note.txt']['status'], 'recovery_missing')
+            self.assertEqual(rows['note.txt']['purge_at'], deleted['purge_at'])
+            with self.assertRaisesRegex(ValueError, 'system Trash'):
+                s.action(deleted['id'], 'restore')
+        with self.store.session() as s:
+            self.assertFalse(s.storage_recreated)
+            self.assertEqual(s.snapshot()['missing_recovery_count'], 1)
+
+    def test_intentionally_removed_folder_is_not_recreated_until_reenabled(self):
+        (self.store.data / 'folder-removal-requested').touch()
+        shutil.rmtree(self.store.root)
+        with self.assertRaisesRegex(ValueError, 'Enable the extension again'):
+            with self.store.session():
+                pass
+        self.assertFalse(self.store.root.exists())
+        (self.store.data / 'folder-removal-requested').unlink()
+        with self.store.session():
+            pass
+        self.assertTrue(self.store.root.is_dir())
+
+    def test_deleted_recovery_folder_is_unavailable_even_while_paused(self):
+        deleted = self.expire()
+        with self.store.session() as s:
+            s.configure('paused', True)
+        shutil.rmtree(self.store.root / '.transist-recovery')
+        with self.store.session() as s:
+            self.assertTrue(s.storage_recreated)
+            self.assertEqual(s.snapshot()['files'][0]['status'], 'recovery_missing')
+            with self.assertRaisesRegex(ValueError, 'unavailable'):
+                s.action(deleted['id'], 'restore')
+
+    def test_status_detects_external_deletion_without_waiting_for_cleanup(self):
+        deleted = self.expire()
+        path = self.write('active.txt')
+        self.tick()
+        with self.store.session() as s:
+            path.unlink()
+            (self.store.root / '.transist-recovery' / deleted['id']).unlink()
+            snapshot = s.snapshot()
+            self.assertEqual(snapshot['missing_recovery_count'], 1)
+            self.assertNotIn('active', [r['status'] for r in snapshot['files']])
+
+    def test_moved_root_does_not_erase_trash_and_returned_recovery_can_restore(self):
+        deleted = self.expire()
+        trashed = self.home / 'trashed-folder'
+        self.store.root.rename(trashed)
+        vault_file = trashed / '.transist-recovery' / deleted['id']
+        with self.store.session() as s:
+            self.assertEqual(s.snapshot()['files'][0]['status'], 'recovery_missing')
+            self.assertEqual(vault_file.read_bytes(), b'valuable data')
+        vault_file.rename(self.store.root / '.transist-recovery' / deleted['id'])
+        with self.store.session() as s:
+            self.assertEqual(s.snapshot()['files'][0]['status'], 'deleted')
+            self.assertEqual(s.snapshot()['missing_recovery_count'], 0)
+            s.action(deleted['id'], 'restore')
+        self.assertEqual((self.store.root / 'note.txt').read_bytes(), b'valuable data')
+
+    def test_replaced_or_symlinked_recovery_copy_cannot_be_restored(self):
+        deleted = self.expire()
+        original = self.store.root / '.transist-recovery' / deleted['id']
+        original.rename(self.home / 'original-recovery')
+        original.write_bytes(b'different file')
+        with self.store.session() as s:
+            self.assertEqual(s.snapshot()['files'][0]['status'], 'recovery_missing')
+            with self.assertRaisesRegex(ValueError, 'unavailable'):
+                s.action(deleted['id'], 'restore')
+        original.unlink()
+        original.symlink_to(self.home / 'original-recovery')
+        with self.store.session() as s:
+            self.assertEqual(s.snapshot()['files'][0]['status'], 'recovery_missing')
+        self.assertEqual((self.home / 'original-recovery').read_bytes(), b'valuable data')
 
     def test_purge_at_seven_days_and_keep_history(self):
         row = self.expire()

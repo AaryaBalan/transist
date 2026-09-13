@@ -16,6 +16,14 @@ test('active entries offer pin and unpin, newest first', () => {
 test('history allows restore only strictly inside recovery window', () => {
     assert.deepEqual(fileRows(snapshot, 'history').map(r => [r.id, r.enabled]), [['d', true], ['e', false], ['x', false]]);
 });
+test('missing recovery copies stay in history with an explanation and no restore action', () => {
+    const missing = {...snapshot, files: [{id: 'm', name: 'missing.png', status: 'recovery_missing', deleted: 800, purge_at: 2000}]};
+    const row = fileRows(missing, 'history')[0];
+    assert.equal(row.enabled, false);
+    assert.equal(row.label, 'Unavailable');
+    assert.match(row.subtitle, /check system Trash/);
+    assert.equal(fileRows(missing, 'active').length, 0);
+});
 test('case-insensitive search includes all entries before pagination', () => {
     assert.equal(fileRows(snapshot, 'active', ' keep.png ')[0].id, 'p');
     assert.equal(fileRows(snapshot, 'history', 'unknown').length, 0);

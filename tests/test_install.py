@@ -29,7 +29,7 @@ class InstallerTests(unittest.TestCase):
             keep.write_text('keep me')
             old_path = sys.path[:]
             try:
-                with patch.dict(os.environ, env), patch.object(Path, 'home', return_value=home), patch('os.geteuid', return_value=1000), patch.object(sys, 'argv', ['install.py', '--no-service']), contextlib.redirect_stdout(io.StringIO()):
+                with patch.dict(os.environ, env), patch.object(Path, 'home', return_value=home), patch('os.geteuid', return_value=1000), patch.object(install, 'file_manager_runtime_available', return_value=True), patch.object(sys, 'argv', ['install.py', '--no-service']), contextlib.redirect_stdout(io.StringIO()):
                     install.main()
                 launcher = home / '.local/bin/transist'
                 result = subprocess.run([str(launcher), 'status'], env={**os.environ, **env}, capture_output=True, text=True, check=True)
@@ -47,12 +47,17 @@ class InstallerTests(unittest.TestCase):
                 self.assertIn('ExecStart="' + str(launcher) + '" daemon', unit.read_text())
                 self.assertTrue((home / '.local/share/gnome-shell/extensions' / install.UUID / 'extension.js').is_file())
                 self.assertTrue((home / '.local/share/gnome-shell/extensions' / install.UUID / 'schemas/gschemas.compiled').is_file())
+                guard = home / '.local/share/nautilus-python/extensions/transist_guard.py'
+                self.assertTrue(guard.is_file())
+                self.assertTrue(guard.with_name('transist_guard_native.so').is_file())
                 with patch.dict(os.environ, env), patch.object(Path, 'home', return_value=home), patch('os.geteuid', return_value=1000), patch.object(sys, 'argv', ['install.py', '--uninstall']), patch('subprocess.run') as run, contextlib.redirect_stdout(io.StringIO()):
                     install.main()
                 self.assertEqual(keep.read_text(), 'keep me')
                 self.assertTrue((home / '.local/share/transist/state.sqlite3').is_file())
                 self.assertFalse(launcher.exists())
                 self.assertFalse(unit.exists())
+                self.assertFalse(guard.exists())
+                self.assertFalse(guard.with_name('transist_guard_native.so').exists())
             finally:
                 sys.path[:] = old_path
 

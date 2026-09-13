@@ -12,16 +12,17 @@ export function remaining(seconds) {
 
 export function fileRows(snapshot, page, query = '') {
     const search = query.trim().toLocaleLowerCase();
-    return snapshot.files.filter(file => (page === 'active' ? file.status === 'active' : ['deleted', 'purged'].includes(file.status)) && file.name.toLocaleLowerCase().includes(search))
+    return snapshot.files.filter(file => (page === 'active' ? file.status === 'active' : ['deleted', 'purged', 'recovery_missing'].includes(file.status)) && file.name.toLocaleLowerCase().includes(search))
         .sort((a, b) => page === 'active' ? b.added - a.added : b.deleted - a.deleted)
         .map(file => {
             const active = page === 'active';
             const valid = file.status === 'deleted' && file.purge_at > snapshot.now;
+            const unavailable = file.status === 'recovery_missing';
             return {
                 id: file.id, name: file.name,
                 icon: active ? (file.permanent ? 'emblem-important-symbolic' : 'text-x-generic-symbolic') : 'document-open-recent-symbolic',
-                subtitle: active ? (file.permanent ? 'Permanent · no expiry' : `${remaining(file.expires - snapshot.now)} remaining`) : `Deleted ${new Date(file.deleted * 1000).toLocaleString()} · ${valid ? `Recover for ${remaining(file.purge_at - snapshot.now)}` : 'Recovery period ended'}`,
-                label: active ? (file.permanent ? 'Make Temporary' : 'Keep Permanently') : `Restore · ${lifetimeLabel(snapshot.settings?.lifetime_hours)}`,
+                subtitle: active ? (file.permanent ? 'Permanent · no expiry' : `${remaining(file.expires - snapshot.now)} remaining`) : `Deleted ${new Date(file.deleted * 1000).toLocaleString()} · ${unavailable ? 'Recovery copy missing or replaced · check system Trash' : valid ? `Recover for ${remaining(file.purge_at - snapshot.now)}` : 'Recovery period ended'}`,
+                label: active ? (file.permanent ? 'Make Temporary' : 'Keep Permanently') : unavailable ? 'Unavailable' : valid ? `Restore · ${lifetimeLabel(snapshot.settings?.lifetime_hours)}` : 'Expired',
                 action: active ? (file.permanent ? 'unpin' : 'pin') : 'restore',
                 enabled: active || valid,
             };

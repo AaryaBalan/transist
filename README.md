@@ -27,7 +27,9 @@ GTK/libadwaita windows. The previous app's saved theme value is ignored.
 
 A small **headless Python cleanup service** is still installed. It has no window
 or application-menu entry and keeps cleanup working while preferences are closed.
-There is no Python GTK / PyGObject dependency anymore.
+The backend does not require PyGObject. The GNOME Files deletion-protection
+companion requires its Python extension runtime (`python3-nautilus` on Ubuntu),
+PyGObject, GTK 4, libadwaita, and a C compiler (`gcc`) at installation time.
 
 ## Install or upgrade
 
@@ -43,7 +45,9 @@ a systemd user session for automatic startup.
 python3 install.py
 ```
 
-4. Log out and back in to reload GNOME's cached extension code, then run:
+4. Restart GNOME Files with `nautilus --quit`, then open Files again to load
+   folder protection. This closes existing Files windows.
+5. Log out and back in to reload GNOME's cached extension code, then run:
 
 ```bash
 gnome-extensions enable transist@aaryabalan.local
@@ -63,6 +67,8 @@ extension preferences instead of launching an app.
 
 This GUI now targets GNOME only. Other desktops can still use the CLI/service with
 `python3 install.py --no-extension`, but there is no standalone graphical app.
+Use `--no-file-manager-guard` to install without Files deletion protection.
+The source ZIP includes the companion; the Shell-only ZIP does not.
 Without systemd, use `--no-service` and supervise `~/.local/bin/transist daemon`
 yourself; no alternate autostart integration is installed.
 
@@ -125,8 +131,49 @@ Other screenshot programs can also be configured to save directly into `~/_trans
 | Pause | No automatic screenshot moves, expiry, or purging; clocks still advance |
 | Resume | Overdue files are processed; pause does not extend recovery eligibility |
 | Reboot / suspend / logout | Persisted deadlines survive; overdue work resumes when the service runs again |
+| Delete or move `_transist` outside Transist | Missing active files leave Active Files; missing recovery copies are labelled Unavailable with Restore disabled |
 
 The service polls every **10 seconds**. Timing starts from first observation, not the file's old creation/modification timestamp. An unobserved file placed while the service is stopped receives its timer when the service next discovers it. Recently changing files wait until unchanged for **30 seconds** before expiry. A powered-off computer cannot clean files; a normal user service is not guaranteed to run after the last login session ends.
+
+### Before deleting the folder
+
+`_transist` contains both your active files and `.transist-recovery`. Deleting or
+moving the whole folder also removes those recovery copies from Transist's reach.
+History is stored separately; a filename in history is not a backup.
+
+With the companion installed and Files restarted, **GNOME Files blocks Trash and
+permanent deletion of exactly `~/_transist` while Transist is enabled**. The popup
+says “Deleting _transist is restricted” and “Disable the Transist extension first.”
+It offers only Close. Files inside it and unrelated folders remain deletable.
+
+Disable Transist in GNOME Extensions to allow removing the folder. When Files
+then removes it, the companion stops `transist.service` and records your removal
+request so the backend does not immediately recreate it. Re-enabling Transist
+clears that request and resumes cleanup. Disabling alone keeps cleanup running.
+
+This protection is specific to GNOME Files. It does not prevent terminal commands,
+other apps, or renaming/moving the folder. It does not change permissions or lock
+other folders. For removal outside Files, stop the service yourself first with
+`systemctl --user stop transist.service`. Uninstall also stops cleanup and leaves
+your files intact; restart Files after uninstall to unload the companion.
+
+Technical scope: Files has no public deletion-veto provider. The companion wraps
+the in-process GFile delete/trash methods using offsets from the installed GIO
+typelib. A small native dispatcher keeps Python out of Files worker threads;
+extension-state signals update its restriction. The companion adjusts only dialogs containing Transist's exact restriction message.
+It has been tested with Nautilus 50; retest after Nautilus/GLib/libadwaita upgrades.
+It is not a filesystem security boundary.
+
+The service also detects missing storage and reports unavailable recovery copies,
+including deletions performed outside Files. Its post-deletion notification cannot
+recover removed contents.
+
+If you already deleted the folder, use **Open Trash** in the warning on Active Files
+or Recently Deleted. Missing/replaced recovery copies show **Unavailable**, with
+Restore disabled. If the original recovery copies are returned to their expected
+paths, Transist recognises them again without extending their seven-day deadline.
+It does not search, move, or empty your Trash automatically. Permanently removed
+contents cannot be recreated from history.
 
 ### Scope and file handling
 

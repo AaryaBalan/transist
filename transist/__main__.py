@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import signal
+import shutil
 import subprocess
 import threading
 from .core import Store
@@ -32,10 +33,26 @@ def main():
         signal.signal(signal.SIGTERM, lambda *_: stop.set())
         signal.signal(signal.SIGINT, lambda *_: stop.set())
         previous_error = None
+        previous_missing = 0
         while not stop.is_set():
             try:
                 with store.session() as s:
                     s.tick()
+                    missing = s.missing_recovery_count()
+                    storage_lost = s.storage_recreated or missing > previous_missing
+                if storage_lost:
+                    message = ('The _transist folder or recovery files were removed outside Transist. '
+                               'Check system Trash. Before removing the folder intentionally, disable '
+                               'the extension and stop transist.service; disabling the extension alone does not stop cleanup.')
+                    logging.warning(message)
+                    if shutil.which('notify-send'):
+                        try:
+                            subprocess.run(['notify-send', '--app-name=Transist', '--urgency=critical',
+                                            'Transist storage was removed', message],
+                                           timeout=3, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        except (OSError, subprocess.TimeoutExpired):
+                            pass
+                previous_missing = missing
                 previous_error = None
             except Exception as error:
                 if str(error) != previous_error:

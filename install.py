@@ -7,15 +7,26 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 
 SOURCE = Path(__file__).resolve().parent
 UUID = 'transist@aaryabalan.local'
+
+
+def file_manager_runtime_available():
+    python = '/usr/bin/python3' if Path('/usr/bin/python3').exists() else sys.executable
+    runtime = subprocess.run([python, '-c', "import gi; gi.require_version('Nautilus', '4.1'); gi.require_version('Gtk', '4.0'); gi.require_version('Adw', '1'); from gi.repository import Nautilus, Gtk, Adw"], capture_output=True)
+    loaders = [p for base in (Path('/usr/lib'), Path('/usr/lib64'))
+               for pattern in ('nautilus/extensions-4/libnautilus-python.so', '*/nautilus/extensions-4/libnautilus-python.so')
+               for p in base.glob(pattern)]
+    return runtime.returncode == 0 and bool(loaders)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--no-service', action='store_true', help='Install without starting cleanup')
     parser.add_argument('--no-extension', action='store_true', help='Install only the headless service and CLI')
+    parser.add_argument('--no-file-manager-guard', action='store_true', help='Skip the GNOME Files folder-deletion companion')
     parser.add_argument('--uninstall', action='store_true', help='Remove program; preserve all files, recovery data, and settings')
     args = parser.parse_args()
     if os.geteuid() == 0:
@@ -31,12 +42,14 @@ def main():
     desktop = data / 'applications/io.github.transist.App.desktop'
     icon = data / 'icons/hicolor/scalable/apps/io.github.transist.App.svg'
     extension = data / 'gnome-shell/extensions' / UUID
+    file_manager_guard = data / 'nautilus-python/extensions/transist_guard.py'
+    native_guard = file_manager_guard.with_name('transist_guard_native.so')
     if args.uninstall:
         if shutil.which('systemctl'):
             subprocess.run(['systemctl', '--user', 'disable', '--now', 'transist.service'], check=False)
         if shutil.which('gnome-extensions'):
             subprocess.run(['gnome-extensions', 'disable', UUID], check=False)
-        for path in (launcher, unit, desktop, icon):
+        for path in (launcher, unit, desktop, icon, file_manager_guard, native_guard):
             path.unlink(missing_ok=True)
         for path in (app, extension):
             if path.is_dir() and not path.is_symlink():
@@ -49,6 +62,18 @@ def main():
         parser.error('systemd is required for automatic startup. Use --no-service and run transist daemon with your own supervisor.')
     if not args.no_extension and not shutil.which('glib-compile-schemas'):
         parser.error('glib-compile-schemas is required to install the GNOME extension settings.')
+    install_guard = not args.no_extension and not args.no_file_manager_guard
+    if install_guard and not file_manager_runtime_available():
+        parser.error('Folder protection requires the GNOME Files Python extension runtime (python3-nautilus on Ubuntu). Install it, or use --no-file-manager-guard.')
+    native_bytes = None
+    if install_guard:
+        compiler = shutil.which('cc')
+        if not compiler:
+            parser.error('Folder protection requires a C compiler (gcc on Ubuntu), or use --no-file-manager-guard.')
+        with tempfile.TemporaryDirectory(prefix='transist-build-') as temp:
+            output = Path(temp) / 'guard.so'
+            subprocess.run([compiler, '-shared', '-fPIC', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', str(SOURCE / 'nautilus/guard_native.c'), '-o', str(output)], check=True)
+            native_bytes = output.read_bytes()
     for path in (app, launcher.parent, unit.parent):
         path.mkdir(parents=True, exist_ok=True)
     shutil.copytree(SOURCE / 'transist', app / 'transist', dirs_exist_ok=True, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
@@ -67,6 +92,13 @@ def main():
     if not args.no_extension:
         shutil.copytree(SOURCE / 'extension', extension, dirs_exist_ok=True)
         subprocess.run(['glib-compile-schemas', '--strict', str(extension / 'schemas')], check=True)
+    if install_guard:
+        file_manager_guard.parent.mkdir(parents=True, exist_ok=True)
+        # Atomic replacement preserves any library mapped by the current Files process.
+        staged = native_guard.with_suffix('.so.new')
+        staged.write_bytes(native_bytes)
+        staged.replace(native_guard)
+        shutil.copy2(SOURCE / 'nautilus/transist_guard.py', file_manager_guard)
     # Initialize only after dependencies are checked.
     sys.path.insert(0, str(app))
     from transist.core import Store
@@ -81,6 +113,8 @@ def main():
         print('Cleanup is not running. Start ~/.local/bin/transist daemon when ready.')
     if not args.no_extension:
         print('For GNOME: log out and back in, then run: gnome-extensions enable ' + UUID)
+    if install_guard:
+        print('Restart GNOME Files to load folder protection: nautilus --quit')
     print('Open settings: gnome-extensions prefs ' + UUID)
     print('Existing settings and file history are preserved. Screenshot capture defaults to OFF for new installs.')
 

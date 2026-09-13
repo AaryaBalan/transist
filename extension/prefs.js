@@ -28,6 +28,10 @@ export default class TransistPreferences extends ExtensionPreferences {
             status.add_suffix(this._button('Open Folder', () => this._openFolder()));
             status.add_suffix(this._button('Refresh', () => this._refresh()));
             overview.add(status);
+            const storageWarning = new Adw.ActionRow({ title: 'Recovery files are unavailable', use_markup: false, visible: false });
+            storageWarning.add_prefix(new Gtk.Image({ icon_name: 'dialog-warning-symbolic' }));
+            storageWarning.add_suffix(this._button('Open Trash', () => this._openUri('trash:///')));
+            overview.add(storageWarning);
             page.add(overview);
             const searchGroup = new Adw.PreferencesGroup();
             const search = new Gtk.SearchEntry({ placeholder_text: 'Search filenames', hexpand: true });
@@ -36,13 +40,15 @@ export default class TransistPreferences extends ExtensionPreferences {
             const files = new Adw.PreferencesGroup({ title: name === 'active' ? 'Your temporary collection' : 'Recovery history', description: name === 'active' ? 'Each temporary file has its own cleanup timer. Use the eye icon to open a file.' : 'Files removed by automatic cleanup can be restored within seven days.' });
             page.add(files);
             window.add(page);
-            this._views[name] = { status, search, files, children: [], limit: 100 };
+            this._views[name] = { status, storageWarning, search, files, children: [], limit: 100 };
             search.connect('search-changed', () => {
                 this._views[name].limit = 100;
                 this._renderFiles(name);
             });
         }
         const settings = new Adw.PreferencesPage({ name: 'settings', title: 'Settings', icon_name: 'emblem-system-symbolic' });
+        const folderSafety = new Adw.PreferencesGroup({ title: 'Folder safety' });
+        settings.add(folderSafety);
         const guide = new Adw.PreferencesGroup({ title: 'How Transist works', description: 'A temporary home for files you only need for a while.' });
         for (const [title, subtitle] of [
             ['1. Add files', 'Place files directly in ~/_transist, or enable screenshot saving above. Each file’s timer starts when Transist first detects it.'],
@@ -92,6 +98,14 @@ export default class TransistPreferences extends ExtensionPreferences {
         settings.add(this._controls);
         settings.add(guide);
         const info = new Adw.PreferencesGroup({ title: 'Storage and service' });
+        this._deletionWarning = new Adw.ActionRow({
+            title: 'Folder deletion protection',
+            subtitle: 'Checking the GNOME Files companion…',
+            use_markup: false,
+        });
+        this._deletionWarning.add_prefix(new Gtk.Image({ icon_name: 'security-high-symbolic' }));
+        folderSafety.add(this._deletionWarning);
+        info.add(new Adw.ActionRow({ title: 'Stop the background service', subtitle: 'Run in Terminal: systemctl --user stop transist.service. Use install.py --uninstall to remove Transist while preserving your files.', use_markup: false }));
         this._service = new Adw.ActionRow({ title: 'Background cleanup', subtitle: 'Checking service…', use_markup: false });
         this._service.add_suffix(this._button('Refresh', () => this._refresh()));
         info.add(this._service);
@@ -249,6 +263,9 @@ export default class TransistPreferences extends ExtensionPreferences {
         if (!this._snapshot)
             return;
         this._sync = true;
+        this._deletionWarning.subtitle = this._snapshot.folder_guard_installed
+            ? 'GNOME Files blocks deleting _transist while this extension is enabled. Files inside it remain deletable. Disable Transist first to remove the folder. Restart Files after installing the companion. Terminal commands and other apps are not protected.'
+            : 'The GNOME Files companion is not installed. Run install.py to add folder protection. Deleting _transist also removes its recovery copies.';
         this._capture.active = this._snapshot.settings.capture_screenshots;
         this._pause.active = this._snapshot.settings.paused;
         this._lifetime.selected = lifetimeOptions.indexOf(this._snapshot.settings.lifetime_hours ?? 5);
@@ -268,6 +285,9 @@ export default class TransistPreferences extends ExtensionPreferences {
         if (!this._snapshot)
             return;
         const view = this._views[name];
+        const missing = this._snapshot.missing_recovery_count ?? 0;
+        view.storageWarning.visible = missing > 0;
+        view.storageWarning.subtitle = `${missing} recovery ${missing === 1 ? 'copy is' : 'copies are'} missing or replaced. Removing _transist also removes its recovery folder. Check system Trash; history entries alone cannot restore files.`;
         for (const child of view.children)
             view.files.remove(child);
         view.children = [];
