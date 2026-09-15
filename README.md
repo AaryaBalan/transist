@@ -221,3 +221,15 @@ flowchart TD
 ## License
 
 MIT licensed. See [LICENSE](LICENSE).
+
+### Delete, view recovery files, and empty Transit Trash
+
+Each Active Files row has **Delete**, which moves that file to Recently Deleted
+for seven-day recovery. This explicit action also works for permanent files and
+while automatic cleanup is paused.
+
+Recently Deleted has an **eye button** to open each available recovery copy in its
+default application without restoring it. Missing and expired copies cannot be
+opened. **Empty Trash** asks for confirmation, then permanently removes all Transit
+recovery copies and clears its history, including entries hidden by search. It does
+not delete active files or empty your desktop's system Trash.

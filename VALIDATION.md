@@ -2,7 +2,7 @@
 
 ## Completed
 
-- **53 Python tests passed:** deletion/moving of the root or recovery folder,
+- **58 Python tests passed:** deletion/moving of the root or recovery folder,
   immediate availability checks, returned/replaced/symlinked recovery copies,
   all seven cleanup windows, changing existing timers,
   pause/resume, persistence, restoration, collision handling, recovery deadlines,
@@ -89,3 +89,16 @@ The systemd operations are mocked in installer tests. GitHub CI has not been run
   re-enabling resumes it. Test this only with disposable files.
 - Test missing/stopped service and recovery after reinstall/restart.
 - Recheck each declared GNOME version before advertising compatibility.
+
+- Manual Delete tested with paused cleanup and a permanent file, followed by
+  preview and restore. Replaced active files are refused.
+- Empty Trash tested for recovery/history clearing, idempotence, active-file and
+  system-Trash preservation. Preview rejects expired or replaced recovery copies.
+- Presentation tests cover preview availability for recoverable, expired, purged,
+  and unavailable entries.
+
+- CLI integration verifies Delete → Preview → Empty Trash with disposable data.
+- Native sample screenshots verify aligned active actions and the recovery eye and Empty Trash controls.
+
+- Native confirmation smoke test verifies Cancel/default-close never invokes deletion,
+  and confirmation invokes exactly one Empty Trash command against a mocked backend.

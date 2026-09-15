@@ -127,6 +127,64 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(s.settings()['lifetime_hours'], 5)
             self.assertEqual(s.snapshot()['files'][0]['expires'], row['expires'])
 
+    def test_manual_delete_is_recoverable_even_if_permanent_and_paused(self):
+        path = self.write()
+        row = self.tick()[0]
+        with self.store.session() as state:
+            state.action(row['id'], 'pin')
+            state.configure('paused', True)
+            state.action(row['id'], 'delete')
+            deleted = state.snapshot()['files'][0]
+            self.assertEqual(deleted['status'], 'deleted')
+            self.assertEqual(deleted['purge_at'], self.now + RETENTION)
+            self.assertFalse(path.exists())
+            preview = state.recovery_path(row['id'])
+            self.assertEqual(Path(preview['path']).read_bytes(), b'valuable data')
+            self.assertEqual(preview['name'], 'note.txt')
+            state.action(row['id'], 'restore')
+        self.assertEqual(path.read_bytes(), b'valuable data')
+
+    def test_delete_refuses_replaced_file(self):
+        path = self.write()
+        row = self.tick()[0]
+        path.rename(self.home / 'original')
+        path.write_text('replacement')
+        with self.store.session() as state, self.assertRaisesRegex(ValueError, 'no longer active'):
+            state.action(row['id'], 'delete')
+        self.assertEqual(path.read_text(), 'replacement')
+
+    def test_empty_trash_clears_history_and_recovery_only(self):
+        deleted = self.expire()
+        active = self.write('keep.txt')
+        self.tick()
+        system_trash = self.home / '.local/share/Trash/files'
+        system_trash.mkdir(parents=True)
+        (system_trash / 'untouched').write_text('keep')
+        with self.store.session() as state:
+            state.empty_trash()
+            self.assertEqual([r['name'] for r in state.snapshot()['files']], ['keep.txt'])
+            state.empty_trash()
+        self.assertTrue(active.exists())
+        self.assertFalse((self.store.root / '.transit-recovery' / deleted['id']).exists())
+        self.assertEqual((system_trash / 'untouched').read_text(), 'keep')
+
+    def test_preview_rejects_expired_or_replaced_recovery(self):
+        deleted = self.expire()
+        self.now = deleted['purge_at']
+        with self.store.session() as state, self.assertRaises(ValueError):
+            state.recovery_path(deleted['id'])
+        self.now -= 1
+        path = self.store.root / '.transit-recovery' / deleted['id']
+        path.rename(self.home / 'original')
+        path.symlink_to(self.home / 'original')
+        with self.store.session() as state:
+            with self.assertRaises(ValueError):
+                state.recovery_path(deleted['id'])
+            state.empty_trash()
+            self.assertEqual(state.snapshot()['files'], [])
+        self.assertTrue(path.is_symlink())
+        self.assertEqual((self.home / 'original').read_bytes(), b'valuable data')
+
     def test_restore_resets_five_hours(self):
         row = self.expire()
         self.now += 6 * 86400

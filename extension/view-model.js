@@ -25,6 +25,7 @@ export function fileRows(snapshot, page, query = '') {
                 label: active ? (file.permanent ? 'Make Temporary' : 'Keep Permanently') : unavailable ? 'Unavailable' : valid ? `Restore · ${lifetimeLabel(snapshot.settings?.lifetime_hours)}` : 'Expired',
                 action: active ? (file.permanent ? 'unpin' : 'pin') : 'restore',
                 enabled: active || valid,
+                previewEnabled: active || valid,
             };
         });
 }

@@ -13,11 +13,13 @@ def main():
     commands = parser.add_subparsers(dest='command', required=True)
     gui = commands.add_parser('gui')
     gui.add_argument('--page', choices=['active', 'history', 'settings'], default='active')
-    for name in ('status', 'tick', 'daemon', 'open'):
+    for name in ('status', 'tick', 'daemon', 'open', 'empty-trash'):
         commands.add_parser(name)
     action = commands.add_parser('action')
-    action.add_argument('operation', choices=['pin', 'unpin', 'restore'])
+    action.add_argument('operation', choices=['pin', 'unpin', 'restore', 'delete'])
     action.add_argument('id')
+    preview = commands.add_parser('preview')
+    preview.add_argument('id')
     config = commands.add_parser('config')
     config.add_argument('key', choices=['paused', 'capture_screenshots', 'screenshot_folder', 'theme', 'lifetime_hours'])
     config.add_argument('value')
@@ -64,6 +66,11 @@ def main():
         with store.session() as s:
             if args.command == 'tick':
                 s.tick()
+            elif args.command == 'preview':
+                print(json.dumps(s.recovery_path(args.id)))
+                return
+            elif args.command == 'empty-trash':
+                s.empty_trash()
             elif args.command == 'action':
                 s.action(args.id, args.operation)
             elif args.command == 'config':

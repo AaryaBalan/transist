@@ -14,6 +14,23 @@ from transit.core import Store
 
 
 class InstallerTests(unittest.TestCase):
+    def test_cli_delete_preview_and_empty_trash(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            env = {**os.environ, 'HOME': str(home), 'XDG_DATA_HOME': str(home / 'data'), 'XDG_CONFIG_HOME': str(home / 'config')}
+            def command(*args):
+                result = subprocess.run([sys.executable, '-m', 'transit', *args], env=env, capture_output=True, text=True, check=True)
+                return json.loads(result.stdout)
+            command('status')
+            (home / '_transit/sample.txt').write_text('sample')
+            file_id = command('tick')['files'][0]['id']
+            self.assertEqual(command('action', 'delete', file_id)['files'][0]['status'], 'deleted')
+            preview = command('preview', file_id)
+            self.assertEqual(preview['name'], 'sample.txt')
+            self.assertEqual(Path(preview['path']).read_text(), 'sample')
+            self.assertEqual(command('empty-trash')['files'], [])
+            self.assertFalse(Path(preview['path']).exists())
+
     def test_install_launcher_and_uninstall_preserve_user_data(self):
         with tempfile.TemporaryDirectory() as temp:
             home = Path(temp) / 'a home with spaces'
@@ -72,7 +89,7 @@ class InstallerTests(unittest.TestCase):
                 self.assertFalse(recovery_path.exists())
                 database = home / '.local/share/transit/state.sqlite3'
                 self.assertTrue(database.is_file())
-                with sqlite3.connect(database) as db:
+                with contextlib.closing(sqlite3.connect(database)) as db:
                     self.assertEqual(db.execute('SELECT COUNT(*) FROM files').fetchone()[0], 0)
                     self.assertEqual(json.loads(db.execute("SELECT value FROM settings WHERE key='lifetime_hours'").fetchone()[0]), 48)
                 self.assertFalse(launcher.exists())

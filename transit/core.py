@@ -388,12 +388,35 @@ class Store:
             raise ValueError('File not found')
         if action == 'restore':
             self.move(r, restoring=True)
+        elif action == 'delete':
+            if r['status'] != 'active' or not self.matches(self.rootfd, r['name'], r):
+                raise ValueError('File is no longer active')
+            self.move(r)
+            if self.db.execute('SELECT status FROM files WHERE id=?', (file_id,)).fetchone()[0] != 'deleted':
+                raise ValueError('File changed or has multiple hard links. Refresh and try again.')
         elif action in ('pin', 'unpin'):
             if r['status'] != 'active' or not self.matches(self.rootfd, r['name'], r):
                 raise ValueError('File is no longer active')
             self.db.execute('UPDATE files SET permanent=?,expires=? WHERE id=?', (int(action == 'pin'), self.clock() + self.settings()['lifetime_hours'] * 3600, file_id))
         else:
             raise ValueError('Unknown action')
+
+    def recovery_path(self, file_id):
+        self.refresh_availability()
+        row = self.db.execute('SELECT * FROM files WHERE id=?', (file_id,)).fetchone()
+        if row is None or row['status'] != 'deleted' or self.clock() >= row['purge_at']:
+            raise ValueError('Recovery file is unavailable or its recovery period has ended.')
+        if not self.matches(self.vaultfd, row['id'], row):
+            raise ValueError('Recovery file is missing or changed.')
+        return {'path': str(self.root / '.transit-recovery' / row['id']), 'name': row['name']}
+
+    def empty_trash(self):
+        # This is only Transit recovery/history, never the desktop Trash or active files.
+        for row in self.db.execute("SELECT * FROM files WHERE status IN ('deleted','recovery_missing','purged')").fetchall():
+            if self.vaultfd is not None and self.matches(self.vaultfd, row['id'], row):
+                os.unlink(row['id'], dir_fd=self.vaultfd)
+                os.fsync(self.vaultfd)
+            self.db.execute('DELETE FROM files WHERE id=?', (row['id'],))
 
     def snapshot(self):
         self.refresh_availability()

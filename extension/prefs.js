@@ -27,6 +27,13 @@ export default class TransitPreferences extends ExtensionPreferences {
             const status = new Adw.ActionRow({ title: 'Connecting to cleanup service…', use_markup: false });
             status.add_suffix(this._button('Open Folder', () => this._openFolder()));
             status.add_suffix(this._button('Refresh', () => this._refresh()));
+            let emptyTrash = null;
+            if (name === 'history') {
+                emptyTrash = this._button('Empty Trash', () => this._emptyTrash());
+                emptyTrash.add_css_class('destructive-action');
+                emptyTrash.sensitive = false;
+                status.add_suffix(emptyTrash);
+            }
             overview.add(status);
             const storageWarning = new Adw.ActionRow({ title: 'Recovery files are unavailable', use_markup: false, visible: false });
             storageWarning.add_prefix(new Gtk.Image({ icon_name: 'dialog-warning-symbolic' }));
@@ -37,10 +44,10 @@ export default class TransitPreferences extends ExtensionPreferences {
             const search = new Gtk.SearchEntry({ placeholder_text: 'Search filenames', hexpand: true });
             searchGroup.add(search);
             page.add(searchGroup);
-            const files = new Adw.PreferencesGroup({ title: name === 'active' ? 'Your temporary collection' : 'Recovery history', description: name === 'active' ? 'Each temporary file has its own cleanup timer. Use the eye icon to open a file.' : 'Files removed by automatic cleanup can be restored within seven days.' });
+            const files = new Adw.PreferencesGroup({ title: name === 'active' ? 'Your temporary collection' : 'Recovery history', description: name === 'active' ? 'Each temporary file has its own cleanup timer. Use the eye icon to open a file.' : 'Deleted files can be viewed or restored within seven days. Empty Trash permanently removes their recovery copies.' });
             page.add(files);
             window.add(page);
-            this._views[name] = { status, storageWarning, search, files, children: [], limit: 100 };
+            this._views[name] = { status, emptyTrash, storageWarning, search, files, children: [], limit: 100 };
             search.connect('search-changed', () => {
                 this._views[name].limit = 100;
                 this._renderFiles(name);
@@ -177,6 +184,43 @@ export default class TransitPreferences extends ExtensionPreferences {
         this._openPath(GLib.build_filenamev([this._snapshot.folder, name]));
     }
 
+    async _openRecovery(id) {
+        try {
+            const recovery = await this._command(['preview', id]);
+            if (this._closed)
+                return;
+            // Recovery IDs have no suffix: choose the app from the original filename.
+            const [type] = Gio.content_type_guess(recovery.name, null);
+            const app = Gio.AppInfo.get_default_for_type(type, false);
+            if (!app)
+                throw new Error('No application is available to view this file type. Restore it to choose an application.');
+            app.launch([Gio.File.new_for_path(recovery.path)], null);
+        } catch (error) {
+            if (!this._closed)
+                this._window.add_toast(new Adw.Toast({title: error.message}));
+        }
+    }
+
+    _emptyTrash() {
+        const dialog = new Adw.MessageDialog({
+            transient_for: this._window,
+            modal: true,
+            heading: 'Empty Transit Trash?',
+            body: 'Permanently delete all Transit recovery copies and clear Recently Deleted, including files hidden by search. This cannot be undone. Active files and system Trash are not affected.',
+        });
+        dialog.add_response('cancel', 'Cancel');
+        dialog.add_response('empty', 'Empty Trash');
+        dialog.set_response_appearance('empty', Adw.ResponseAppearance.DESTRUCTIVE);
+        dialog.set_default_response('cancel');
+        dialog.set_close_response('cancel');
+        dialog.connect('response', (_dialog, response) => {
+            if (response === 'empty' && !this._closed)
+                this._refresh(['empty-trash']);
+            dialog.destroy();
+        });
+        dialog.present();
+    }
+
     _openPath(path) {
         this._openUri(Gio.File.new_for_path(path).get_uri());
     }
@@ -273,7 +317,7 @@ export default class TransitPreferences extends ExtensionPreferences {
         this._views.active.files.description = this._snapshot.folder_removed
             ? 'The folder was removed. Re-enable Transit to start a fresh collection.'
             : `Temporary files are removed after ${duration}; permanent files stay. Change the window in Settings. Use the eye icon to open a file.`;
-        this._views.history.files.description = `Recover within seven days of removal. Restoring starts a fresh ${duration} timer.`;
+        this._views.history.files.description = `Use the eye to view a recovery copy, or restore it with a fresh ${duration} timer. Empty Trash permanently removes all recovery copies.`;
         this._sync = false;
     }
 
@@ -281,6 +325,8 @@ export default class TransitPreferences extends ExtensionPreferences {
         this._controls.sensitive = value;
         for (const view of Object.values(this._views))
             view.files.sensitive = value;
+        if (this._views.history.emptyTrash)
+            this._views.history.emptyTrash.sensitive = value && fileRows(this._snapshot, 'history').length > 0;
     }
 
     _renderFiles(name) {
@@ -309,10 +355,11 @@ export default class TransitPreferences extends ExtensionPreferences {
             const row = new Adw.ActionRow({ title: item.name, subtitle: item.subtitle, use_markup: false, title_lines: 1, subtitle_lines: 2 });
             row.set_tooltip_text(item.name);
             row.add_prefix(new Gtk.Image({ icon_name: item.icon }));
-            if (name === 'active') {
+            {
                 const viewFile = new Gtk.Button({ icon_name: 'view-reveal-symbolic', valign: Gtk.Align.CENTER, tooltip_text: `Open ${item.name}` });
                 viewFile.update_property([Gtk.AccessibleProperty.LABEL], [`Open ${item.name}`]);
-                viewFile.connect('clicked', () => this._openFile(item.name));
+                viewFile.sensitive = item.previewEnabled;
+                viewFile.connect('clicked', () => name === 'active' ? this._openFile(item.name) : this._openRecovery(item.id));
                 eyeWidths.add_widget(viewFile);
                 row.add_suffix(viewFile);
             }
@@ -320,6 +367,11 @@ export default class TransitPreferences extends ExtensionPreferences {
             action.sensitive = item.enabled;
             actionWidths.add_widget(action);
             row.add_suffix(action);
+            if (name === 'active') {
+                const remove = this._button('Delete', () => this._refresh(['action', 'delete', item.id]));
+                remove.set_tooltip_text('Move to Recently Deleted; recover within seven days');
+                row.add_suffix(remove);
+            }
             add(row);
         }
         if (rows.length > view.limit)

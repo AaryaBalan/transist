@@ -57,3 +57,8 @@ test('native preferences own the UI with no standalone GUI or CSS override', asy
     assert.doesNotMatch(prefs, /CssProvider|set_color_scheme|['"]gui['"]/);
     assert.doesNotMatch(shell, /['"]gui['"]/);
 });
+
+test('history previews are available only for recoverable copies', () => {
+    assert.deepEqual(fileRows(snapshot, 'history').map(r => [r.id, r.previewEnabled]), [['d', true], ['e', false], ['x', false]]);
+    assert.equal(fileRows({...snapshot, files:[{id:'m', status:'recovery_missing', name:'missing.txt'}]}, 'history')[0].previewEnabled, false);
+});
